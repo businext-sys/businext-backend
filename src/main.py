@@ -1,9 +1,20 @@
 from fastapi import FastAPI
-from .routers import reservation, configuration, product, finances, auth_context, employee, google_reviews, working_hours, intelligence
+from contextlib import asynccontextmanager
+import asyncio
+from .routers import reservation, configuration, product, finances, auth_context, employee, google_reviews, working_hours, intelligence, public_booking, booking_request
+from .services.expiration_service import expire_old_requests
 from fastapi.middleware.cors import CORSMiddleware
 
 
-app = FastAPI()
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Start background task for expiring old booking requests
+    task = asyncio.create_task(expire_old_requests())
+    yield
+    task.cancel()
+
+
+app = FastAPI(lifespan=lifespan)
 
 origins = [
     "http://localhost:3000",
@@ -33,3 +44,5 @@ app.include_router(finances.router)
 app.include_router(google_reviews.router)
 app.include_router(working_hours.router)
 app.include_router(intelligence.router)
+app.include_router(public_booking.router)
+app.include_router(booking_request.router)
