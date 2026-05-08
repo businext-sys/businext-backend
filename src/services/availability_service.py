@@ -1,5 +1,5 @@
 from datetime import datetime, date, timedelta
-from sqlmodel import Session, select, or_, and_
+from sqlmodel import Session, select, or_
 from src.database.models.working_hours_model import WorkingHours
 from src.database.models.reservation_model import Reservation
 from src.database.models.booking_request_model import BookingRequest

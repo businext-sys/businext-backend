@@ -8,7 +8,6 @@ from src.database.database import SessionDep
 from src.database.models.booking_request_model import (
     BookingRequest,
     BookingRequestCreate,
-    BookingRequestPublic,
 )
 from src.database.models.business_conf_model import BusinessConfiguration
 from src.database.models.product_model import Product
@@ -22,8 +21,6 @@ from src.services.email_service import (
     send_email,
     email_request_received_client,
     email_request_received_employee,
-    email_request_accepted,
-    email_request_rejected,
 )
 
 router = APIRouter(prefix="/public/book", tags=["public-booking"])
