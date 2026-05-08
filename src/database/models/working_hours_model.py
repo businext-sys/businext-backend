@@ -8,11 +8,15 @@ class WorkingHoursBase(SQLModel):
     start_time: str  # HH:MM format, e.g. "09:00"
     end_time: str  # HH:MM format, e.g. "18:00"
     enabled: bool = True
+    employee_name: Optional[str] = None  # If null, applies to all employees
 
 
 class WorkingHours(WorkingHoursBase, table=True):
     __table_args__ = (
-        UniqueConstraint("business_id", "day_of_week", name="uq_business_day"),
+        UniqueConstraint(
+            "business_id", "day_of_week", "employee_name",
+            name="uq_business_day_employee",
+        ),
     )
 
     id: int | None = Field(default=None, primary_key=True)
@@ -29,3 +33,4 @@ class WorkingHoursUpdate(WorkingHoursBase):
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     enabled: Optional[bool] = None
+    employee_name: Optional[str] = None
