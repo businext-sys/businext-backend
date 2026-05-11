@@ -9,6 +9,68 @@ from src.database.models.profile_model import Profile
 SLOT_DURATION_MINUTES = 30
 
 
+def _get_hours_for_employee(
+    session: Session,
+    business_id: str,
+    day_of_week: int,
+    member_user_id: str | None,
+) -> list[WorkingHours]:
+    """Get working hour blocks for a specific day.
+    Employee-specific hours take priority; falls back to business-wide."""
+    if member_user_id:
+        # Try employee-specific first
+        emp_hours = session.exec(
+            select(WorkingHours).where(
+                WorkingHours.business_id == business_id,
+                WorkingHours.day_of_week == day_of_week,
+                WorkingHours.enabled == True,  # noqa: E712
+                WorkingHours.member_user_id == member_user_id,
+            )
+        ).all()
+        if emp_hours:
+            return list(emp_hours)
+
+    # Fallback to business-wide
+    biz_hours = session.exec(
+        select(WorkingHours).where(
+            WorkingHours.business_id == business_id,
+            WorkingHours.day_of_week == day_of_week,
+            WorkingHours.enabled == True,  # noqa: E712
+            WorkingHours.member_user_id == None,  # noqa: E711
+        )
+    ).all()
+    return list(biz_hours)
+
+
+def _generate_slots_from_blocks(
+    blocks: list[WorkingHours],
+    target_date: date,
+    now: datetime,
+) -> list[str]:
+    """Generate 30-min time slot strings from multiple working hour blocks."""
+    slots: list[str] = []
+    for wh in blocks:
+        start_h, start_m = map(int, wh.start_time.split(":"))
+        end_h, end_m = map(int, wh.end_time.split(":"))
+        start_minutes = start_h * 60 + start_m
+        end_minutes = end_h * 60 + end_m
+
+        current = start_minutes
+        while current + SLOT_DURATION_MINUTES <= end_minutes:
+            h, m = divmod(current, 60)
+            time_str = f"{h:02d}:{m:02d}"
+
+            # Skip past slots if target_date is today
+            slot_dt = datetime.combine(target_date, datetime.min.time()) + timedelta(
+                hours=h, minutes=m
+            )
+            if slot_dt > now:
+                slots.append(time_str)
+
+            current += SLOT_DURATION_MINUTES
+    return slots
+
+
 def get_available_slots(
     session: Session,
     business_id: str,
@@ -17,55 +79,36 @@ def get_available_slots(
 ) -> list[dict]:
     """
     Returns available 30-min slots for a given date and optional employee.
-    Considers working hours, existing reservations, and pending booking requests.
+    Considers working hours (multi-block), existing reservations, and pending booking requests.
     """
     day_of_week = target_date.weekday()  # 0=Monday
+    now = datetime.utcnow()
 
-    # Fetch working hours for this day
-    wh_query = select(WorkingHours).where(
-        WorkingHours.business_id == business_id,
-        WorkingHours.day_of_week == day_of_week,
-        WorkingHours.enabled == True,  # noqa: E712
-    )
-    if employee_name:
-        # Get employee-specific hours OR business-wide (null) hours
-        wh_query = wh_query.where(
-            or_(
-                WorkingHours.employee_name == employee_name,
-                WorkingHours.employee_name == None,  # noqa: E711
-            )
-        )
-
-    working_hours = session.exec(wh_query).all()
-
-    if not working_hours:
-        return []
-
-    # Build employee → hours mapping
-    # Employee-specific hours take priority over business-wide
-    employee_hours: dict[str | None, WorkingHours] = {}
-    for wh in working_hours:
-        key = wh.employee_name
-        if key not in employee_hours or key is not None:
-            employee_hours[key] = wh
-
-    # Get all employees to check (from working hours that have employee_name set)
-    employees_to_check: list[str | None] = []
+    # Resolve which employees to check
     if employee_name:
         employees_to_check = [employee_name]
     else:
-        # If only business-wide hours exist, generate slots per actual employee
-        named_employees = [k for k in employee_hours.keys() if k is not None]
-        if named_employees:
-            employees_to_check = named_employees
-        else:
-            # Use all active employees with business-wide hours
-            all_emps = get_employees_with_availability(session, business_id)
-            emp_names = [e["name"] for e in all_emps]
-            if emp_names:
-                employees_to_check = emp_names
-            else:
-                employees_to_check = [None]
+        all_emps = get_employees_with_availability(session, business_id)
+        emp_names = [e["name"] for e in all_emps]
+        employees_to_check = emp_names if emp_names else [None]
+
+    # Resolve member_user_id for each employee name
+    emp_member_map: dict[str | None, str | None] = {}
+    if employees_to_check != [None]:
+        members = session.exec(
+            select(BusinessMember).where(
+                BusinessMember.business_id == business_id,
+                BusinessMember.status == "active",
+            )
+        ).all()
+        for member in members:
+            profile = session.exec(
+                select(Profile).where(Profile.id == member.member_user_id)
+            ).first()
+            if profile and profile.display_name:
+                emp_member_map[profile.display_name] = member.member_user_id
+    else:
+        emp_member_map[None] = None
 
     # Fetch existing reservations for target_date
     day_start = datetime.combine(target_date, datetime.min.time())
@@ -100,42 +143,21 @@ def get_available_slots(
         time_key = br.requested_date.strftime("%H:%M")
         occupied.add((br.employee_name, time_key))
 
-    # Generate available slots
-    now = datetime.utcnow()
+    # Generate available slots per employee
     slots: list[dict] = []
-
     for emp in employees_to_check:
-        # Resolve hours: employee-specific > business-wide
-        wh = employee_hours.get(emp) or employee_hours.get(None)
-        if not wh:
+        member_uid = emp_member_map.get(emp)
+        blocks = _get_hours_for_employee(session, business_id, day_of_week, member_uid)
+        if not blocks:
             continue
 
-        start_h, start_m = map(int, wh.start_time.split(":"))
-        end_h, end_m = map(int, wh.end_time.split(":"))
-        start_minutes = start_h * 60 + start_m
-        end_minutes = end_h * 60 + end_m
-
-        current = start_minutes
-        while current + SLOT_DURATION_MINUTES <= end_minutes:
-            h, m = divmod(current, 60)
-            time_str = f"{h:02d}:{m:02d}"
-
-            # Skip past slots if target_date is today
-            slot_dt = datetime.combine(target_date, datetime.min.time()) + timedelta(
-                hours=h, minutes=m
-            )
-            if slot_dt <= now:
-                current += SLOT_DURATION_MINUTES
-                continue
-
-            # Check if occupied
-            emp_name = emp if emp else None
+        time_slots = _generate_slots_from_blocks(blocks, target_date, now)
+        emp_name = emp if emp else None
+        for time_str in time_slots:
             if (emp_name, time_str) not in occupied:
                 slots.append(
                     {"time": time_str, "employee_name": emp_name or "Cualquiera"}
                 )
-
-            current += SLOT_DURATION_MINUTES
 
     # Sort by time
     slots.sort(key=lambda s: s["time"])

@@ -8,14 +8,14 @@ class WorkingHoursBase(SQLModel):
     start_time: str  # HH:MM format, e.g. "09:00"
     end_time: str  # HH:MM format, e.g. "18:00"
     enabled: bool = True
-    employee_name: Optional[str] = None  # If null, applies to all employees
+    member_user_id: Optional[str] = None  # If null, applies to all employees (business-wide)
 
 
 class WorkingHours(WorkingHoursBase, table=True):
     __table_args__ = (
         UniqueConstraint(
-            "business_id", "day_of_week", "employee_name",
-            name="uq_business_day_employee",
+            "business_id", "day_of_week", "member_user_id", "start_time",
+            name="uq_business_day_member_start",
         ),
     )
 
@@ -24,13 +24,26 @@ class WorkingHours(WorkingHoursBase, table=True):
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
-class WorkingHoursPublic(WorkingHoursBase):
+class WorkingHoursPublic(SQLModel):
     id: int
+    day_of_week: int
+    start_time: str
+    end_time: str
+    enabled: bool
+    member_user_id: Optional[str] = None
 
 
-class WorkingHoursUpdate(WorkingHoursBase):
+class WorkingHoursUpdate(SQLModel):
     day_of_week: Optional[int] = None
     start_time: Optional[str] = None
     end_time: Optional[str] = None
     enabled: Optional[bool] = None
-    employee_name: Optional[str] = None
+    member_user_id: Optional[str] = None
+
+
+class WorkingHoursInput(SQLModel):
+    """Input schema for creating/updating working hours blocks."""
+    day_of_week: int
+    start_time: str
+    end_time: str
+    enabled: bool = True
