@@ -31,8 +31,23 @@ def send_email(to: str, subject: str, html: str, reply_to: str | None = None) ->
 
 # ─── Shared layout ────────────────────────────────────────────────────────────
 
-def _wrap(body: str, business_name: str) -> str:
+def _wrap(body: str, business_name: str, business_phone: str | None = None, business_email: str | None = None) -> str:
     """Wrap email body in a styled container."""
+    contact_parts = []
+    if business_phone:
+        contact_parts.append(f'<a href="tel:{business_phone}" style="color:#2563eb; text-decoration:none;">{business_phone}</a>')
+    if business_email:
+        contact_parts.append(f'<a href="mailto:{business_email}" style="color:#2563eb; text-decoration:none;">{business_email}</a>')
+
+    contact_html = ""
+    if contact_parts:
+        contact_html = f"""
+        <div style="padding:12px 24px; background:#f9fafb; border-top:1px solid #e5e7eb; text-align:center;">
+          <p style="margin:0 0 4px; font-size:12px; font-weight:600; color:#6b7280;">Contacto</p>
+          <p style="margin:0; font-size:13px; color:#374151;">{" &nbsp;&middot;&nbsp; ".join(contact_parts)}</p>
+        </div>
+        """
+
     return f"""
     <div style="background-color:#f4f4f5; padding:32px 16px; font-family:'Segoe UI',Roboto,sans-serif;">
       <div style="max-width:480px; margin:0 auto; background:#ffffff; border-radius:12px; overflow:hidden; box-shadow:0 1px 3px rgba(0,0,0,0.08);">
@@ -44,6 +59,8 @@ def _wrap(body: str, business_name: str) -> str:
         <div style="padding:28px 24px;">
           {body}
         </div>
+        <!-- Contact -->
+        {contact_html}
         <!-- Footer -->
         <div style="padding:16px 24px; border-top:1px solid #e5e7eb; text-align:center;">
           <p style="margin:0; font-size:12px; color:#9ca3af;">{business_name} &middot; Powered by Businext</p>
@@ -88,6 +105,8 @@ def email_request_received_client(
     date_str: str,
     business_name: str,
     employee_name: str | None = None,
+    business_phone: str | None = None,
+    business_email: str | None = None,
 ) -> tuple[str, str]:
     """Confirmation email to client after submitting a request."""
     subject = f"Solicitud recibida — {business_name}"
@@ -108,7 +127,7 @@ def email_request_received_client(
       Recibirás otro email cuando tu solicitud sea aceptada o rechazada.
     </p>
     """
-    return subject, _wrap(body, business_name)
+    return subject, _wrap(body, business_name, business_phone, business_email)
 
 
 def email_request_received_employee(
@@ -147,6 +166,8 @@ def email_request_accepted(
     date_str: str,
     business_name: str,
     employee_name: str | None = None,
+    business_phone: str | None = None,
+    business_email: str | None = None,
 ) -> tuple[str, str]:
     """Email to client when their request is accepted."""
     subject = f"¡Reserva confirmada! — {business_name}"
@@ -172,11 +193,12 @@ def email_request_accepted(
       ¡Te esperamos!
     </p>
     """
-    return subject, _wrap(body, business_name)
+    return subject, _wrap(body, business_name, business_phone, business_email)
 
 
 def email_request_rejected(
-    client_name: str, business_name: str, reason: Optional[str] = None
+    client_name: str, business_name: str, reason: Optional[str] = None,
+    business_phone: str | None = None, business_email: str | None = None,
 ) -> tuple[str, str]:
     """Email to client when their request is rejected."""
     subject = f"Solicitud no disponible — {business_name}"
@@ -196,11 +218,12 @@ def email_request_rejected(
       Puedes intentar reservar en otra fecha o contactar directamente con el negocio.
     </p>
     """
-    return subject, _wrap(body, business_name)
+    return subject, _wrap(body, business_name, business_phone, business_email)
 
 
 def email_request_expired(
-    client_name: str, service: str, date_str: str, business_name: str
+    client_name: str, service: str, date_str: str, business_name: str,
+    business_phone: str | None = None, business_email: str | None = None,
 ) -> tuple[str, str]:
     """Email to client when their request expires without response."""
     subject = f"Solicitud expirada — {business_name}"
@@ -218,4 +241,4 @@ def email_request_expired(
       Puedes enviar una nueva solicitud cuando lo desees.
     </p>
     """
-    return subject, _wrap(body, business_name)
+    return subject, _wrap(body, business_name, business_phone, business_email)

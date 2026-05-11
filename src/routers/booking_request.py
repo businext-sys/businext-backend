@@ -84,7 +84,9 @@ def accept_booking_request(
     biz_name = biz.business_name if biz else "Negocio"
     date_str = booking.requested_date.strftime("%d/%m/%Y %H:%M")
     subject, html = email_request_accepted(
-        booking.client_name, booking.service, date_str, biz_name, booking.employee_name
+        booking.client_name, booking.service, date_str, biz_name, booking.employee_name,
+        business_phone=biz.business_phone if biz else None,
+        business_email=biz.business_email if biz else None,
     )
     send_email(booking.client_email, subject, html)
 
@@ -126,7 +128,11 @@ def reject_booking_request(
         )
     ).first()
     biz_name = biz.business_name if biz else "Negocio"
-    subject, html = email_request_rejected(booking.client_name, biz_name, reason)
+    subject, html = email_request_rejected(
+        booking.client_name, biz_name, reason,
+        business_phone=biz.business_phone if biz else None,
+        business_email=biz.business_email if biz else None,
+    )
     send_email(booking.client_email, subject, html)
 
     return {"status": "REJECTED"}

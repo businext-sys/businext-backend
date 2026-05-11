@@ -5,6 +5,8 @@ from datetime import datetime
 
 class BusinessConfigurationBase(SQLModel):
     business_name: str
+    business_phone: Optional[str] = None
+    business_email: Optional[str] = None
 
 
 class BusinessConfiguration(BusinessConfigurationBase, table=True):
@@ -20,3 +22,5 @@ class BusinessConfigurationPublic(BusinessConfigurationBase):
 
 class BusinessConfigurationUpdate(BusinessConfigurationBase):
     business_name: Optional[str] = None
+    business_phone: Optional[str] = None
+    business_email: Optional[str] = None

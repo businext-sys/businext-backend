@@ -35,7 +35,9 @@ async def expire_old_requests():
                     biz_name = biz.business_name if biz else "Negocio"
                     date_str = booking.requested_date.strftime("%d/%m/%Y %H:%M")
                     subject, html = email_request_expired(
-                        booking.client_name, booking.service, date_str, biz_name
+                        booking.client_name, booking.service, date_str, biz_name,
+                        business_phone=biz.business_phone if biz else None,
+                        business_email=biz.business_email if biz else None,
                     )
                     send_email(booking.client_email, subject, html)
 
