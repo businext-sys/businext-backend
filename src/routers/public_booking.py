@@ -162,7 +162,8 @@ def create_booking_request(
     # Send confirmation email to client
     date_str = booking.requested_date.strftime("%d/%m/%Y %H:%M")
     subject, html = email_request_received_client(
-        booking.client_name, booking.service, date_str, biz.business_name, booking.employee_name
+        booking.client_name, booking.service, date_str, biz.business_name, booking.employee_name,
+        business_phone=biz.business_phone, business_email=biz.business_email,
     )
     send_email(booking.client_email, subject, html)
 
