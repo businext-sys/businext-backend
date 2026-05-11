@@ -143,25 +143,20 @@ def get_available_slots(
 
 
 def get_employees_with_availability(
-    session: Session, business_id: str
+    session: Session, business_id: str, location_id: int | None = None,
 ) -> list[dict]:
-    """Returns all active employees (members + owner) for a business."""
+    """Returns all active employees (including owner) for a business, optionally filtered by location."""
     employees: set[str] = set()
 
-    # Get owner display name
-    owner_profile = session.exec(
-        select(Profile).where(Profile.id == business_id)
-    ).first()
-    if owner_profile and owner_profile.display_name:
-        employees.add(owner_profile.display_name)
+    # Get all active members (including owner who now has a row in businessmember)
+    query = select(BusinessMember).where(
+        BusinessMember.business_id == business_id,
+        BusinessMember.status == "active",
+    )
+    if location_id is not None:
+        query = query.where(BusinessMember.location_id == location_id)
 
-    # Get active members
-    members = session.exec(
-        select(BusinessMember).where(
-            BusinessMember.business_id == business_id,
-            BusinessMember.status == "active",
-        )
-    ).all()
+    members = session.exec(query).all()
     for member in members:
         profile = session.exec(
             select(Profile).where(Profile.id == member.member_user_id)

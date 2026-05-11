@@ -145,6 +145,20 @@ def get_auth_context(
     ).first()
 
     if membership:
+        # If the member row has role='owner', treat as owner account
+        if membership.role == "owner":
+            subscription_active = _has_active_subscription(session, membership.business_id)
+            caps = _build_capabilities("owner", subscription_active)
+            return AuthContext(
+                user_id=user_id,
+                business_id=membership.business_id,
+                role="owner",
+                account_type="owner",
+                member_status="active",
+                subscription_active=subscription_active,
+                capabilities=caps,
+            )
+
         # Member: business_id points to the owner's id
         subscription_active = _has_active_subscription(session, membership.business_id)
         role = membership.role if membership.role in ("manager", "employee") else "employee"
