@@ -12,6 +12,7 @@ from src.database.models.booking_request_model import (
 )
 from src.database.models.reservation_model import Reservation
 from src.database.models.business_conf_model import BusinessConfiguration
+from src.database.models.location_model import Location
 from src.services.email_service import (
     send_email,
     email_request_accepted,
@@ -83,10 +84,21 @@ def accept_booking_request(
     ).first()
     biz_name = biz.business_name if biz else "Negocio"
     date_str = booking.requested_date.strftime("%d/%m/%Y %H:%M")
+
+    # Get location info for the email
+    location_name = None
+    location_address = None
+    if booking.location_id:
+        loc = session.get(Location, booking.location_id)
+        if loc:
+            location_name = loc.name
+            location_address = loc.address
+
     subject, html = email_request_accepted(
         booking.client_name, booking.service, date_str, biz_name, booking.employee_name,
         business_phone=biz.business_phone if biz else None,
         business_email=biz.business_email if biz else None,
+        location_name=location_name, location_address=location_address,
     )
     send_email(booking.client_email, subject, html)
 
