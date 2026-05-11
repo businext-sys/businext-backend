@@ -18,6 +18,8 @@ EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 def normalize_employee_role(role: str) -> str:
     if role == "manager":
         return "manager"
+    if role == "owner":
+        return "owner"
     return "employee"
 
 
@@ -60,6 +62,7 @@ def _serialize_employee(member: BusinessMember, profile: Profile | None) -> dict
         "phone": profile.phone if profile else None,
         "role": normalize_employee_role(member.role or "employee"),
         "status": member.status or "pending",
+        "locationId": member.location_id,
         "createdAt": member.created_at,
     }
 
@@ -323,6 +326,9 @@ async def delete_employee(
     if not member:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
 
+    if member.role == "owner":
+        raise HTTPException(status_code=400, detail="No puedes eliminar al propietario del negocio")
+
     await _delete_supabase_user(member_user_id)
 
     session.delete(member)
@@ -335,6 +341,7 @@ def update_employee(
     member_user_id: str,
     role: str | None,
     status: str | None,
+    location_id: int | None = None,
 ) -> dict:
     member = session.exec(
         select(BusinessMember).where(
@@ -345,6 +352,21 @@ def update_employee(
 
     if not member:
         raise HTTPException(status_code=404, detail="Empleado no encontrado")
+
+    # Owner can only change their location_id, not role or status
+    if member.role == "owner":
+        if role is not None or status is not None:
+            raise HTTPException(
+                status_code=400,
+                detail="No se puede cambiar el rol o estado del propietario.",
+            )
+        if location_id is not None:
+            member.location_id = location_id
+        session.add(member)
+        session.commit()
+        session.refresh(member)
+        profile = session.exec(select(Profile).where(Profile.id == member_user_id)).first()
+        return _serialize_employee(member, profile)
 
     if role is not None:
         if member.status == "pending":
@@ -362,6 +384,9 @@ def update_employee(
         if status not in valid_statuses:
             raise HTTPException(status_code=400, detail=f"Status inválido. Opciones: {valid_statuses}")
         member.status = status
+
+    if location_id is not None:
+        member.location_id = location_id
 
     session.add(member)
     session.commit()

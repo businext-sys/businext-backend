@@ -18,6 +18,7 @@ class BookingRequestBase(SQLModel):
 class BookingRequest(BookingRequestBase, table=True):
     id: Optional[int] = Field(default=None, primary_key=True)
     business_id: str = Field(index=True, nullable=False)
+    location_id: Optional[int] = Field(default=None, foreign_key="location.id")
     response_token: str = Field(
         default_factory=lambda: str(uuid4()), index=True, unique=True
     )
@@ -31,6 +32,7 @@ class BookingRequest(BookingRequestBase, table=True):
 class BookingRequestPublic(BookingRequestBase):
     id: int
     business_id: str
+    location_id: Optional[int] = None
     responded_at: Optional[datetime] = None
     expires_at: datetime
     created_at: datetime
@@ -43,3 +45,4 @@ class BookingRequestCreate(SQLModel):
     employee_name: Optional[str] = None
     service: str
     requested_date: datetime
+    location_id: Optional[int] = None

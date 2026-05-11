@@ -24,6 +24,7 @@ class EmployeePublic(BaseModel):
     phone: str | None = None
     role: str
     status: str
+    locationId: int | None = None
     createdAt: datetime | None = None
 
 
@@ -37,6 +38,7 @@ class InviteEmployeeInput(BaseModel):
 class UpdateEmployeeInput(BaseModel):
     role: str | None = None
     status: str | None = None
+    locationId: int | None = None
 
 
 class InviteEmployeeResponse(BaseModel):
@@ -104,6 +106,7 @@ def patch_employee(
         member_user_id=member_user_id,
         role=payload.role,
         status=payload.status,
+        location_id=payload.locationId,
     )
 
 

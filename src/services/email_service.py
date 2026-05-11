@@ -107,11 +107,15 @@ def email_request_received_client(
     employee_name: str | None = None,
     business_phone: str | None = None,
     business_email: str | None = None,
+    location_name: str | None = None,
+    location_address: str | None = None,
 ) -> tuple[str, str]:
     """Confirmation email to client after submitting a request."""
     subject = f"Solicitud recibida — {business_name}"
 
     employee_row = _detail_row("Profesional", employee_name) if employee_name else ""
+    location_row = _detail_row("Local", location_name) if location_name else ""
+    address_row = _detail_row("Dirección", location_address) if location_address else ""
 
     body = f"""
     <h2 style="margin:0 0 8px; font-size:20px; color:#111827;">¡Hola {client_name}!</h2>
@@ -122,6 +126,8 @@ def email_request_received_client(
       {_detail_row("Servicio", service)}
       {_detail_row("Fecha", date_str)}
       {employee_row}
+      {location_row}
+      {address_row}
     </table>
     <p style="margin:16px 0 0; font-size:13px; color:#9ca3af; text-align:center;">
       Recibirás otro email cuando tu solicitud sea aceptada o rechazada.
@@ -168,11 +174,15 @@ def email_request_accepted(
     employee_name: str | None = None,
     business_phone: str | None = None,
     business_email: str | None = None,
+    location_name: str | None = None,
+    location_address: str | None = None,
 ) -> tuple[str, str]:
     """Email to client when their request is accepted."""
     subject = f"¡Reserva confirmada! — {business_name}"
 
     employee_row = _detail_row("Profesional", employee_name) if employee_name else ""
+    location_row = _detail_row("Local", location_name) if location_name else ""
+    address_row = _detail_row("Dirección", location_address) if location_address else ""
 
     body = f"""
     <div style="text-align:center; margin-bottom:20px;">
@@ -188,6 +198,8 @@ def email_request_accepted(
       {_detail_row("Servicio", service)}
       {_detail_row("Fecha", date_str)}
       {employee_row}
+      {location_row}
+      {address_row}
     </table>
     <p style="margin:16px 0 0; font-size:15px; color:#111827; text-align:center; font-weight:600;">
       ¡Te esperamos!

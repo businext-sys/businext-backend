@@ -13,6 +13,7 @@ class BusinessMember(SQLModel, table=True):
     member_user_id: str = Field(index=True, nullable=False)
     role: str = Field(default="employee")  # "manager" | "employee"
     status: str = Field(default="active")  # "pending" | "active" | "inactive"
+    location_id: Optional[int] = Field(default=None, foreign_key="location.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -22,6 +23,7 @@ class BusinessMemberPublic(SQLModel):
     member_user_id: str
     role: str
     status: str
+    location_id: Optional[int] = None
     created_at: datetime
 
 
@@ -33,3 +35,4 @@ class BusinessMemberCreate(SQLModel):
 class BusinessMemberUpdate(SQLModel):
     role: Optional[str] = None
     status: Optional[str] = None
+    location_id: Optional[int] = None

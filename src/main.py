@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 import asyncio
-from .routers import reservation, configuration, product, finances, auth_context, employee, google_reviews, working_hours, intelligence, public_booking, booking_request
+from .routers import reservation, configuration, product, finances, auth_context, employee, google_reviews, working_hours, intelligence, public_booking, booking_request, location
 from .services.expiration_service import expire_old_requests
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -46,3 +46,4 @@ app.include_router(working_hours.router)
 app.include_router(intelligence.router)
 app.include_router(public_booking.router)
 app.include_router(booking_request.router)
+app.include_router(location.router)

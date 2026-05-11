@@ -13,6 +13,7 @@ from src.database.models.business_conf_model import BusinessConfiguration
 from src.database.models.product_model import Product
 from src.database.models.member_model import BusinessMember
 from src.database.models.profile_model import Profile
+from src.database.models.location_model import Location
 from src.services.availability_service import (
     get_available_slots,
     get_employees_with_availability,
@@ -35,6 +36,31 @@ def _get_business_or_404(session, business_id: str) -> BusinessConfiguration:
     if not biz:
         raise HTTPException(status_code=404, detail="Business not found")
     return biz
+
+
+@router.get("/{business_id}/locations")
+def get_locations(business_id: str, session: SessionDep):
+    """Returns active locations for a business."""
+    biz = _get_business_or_404(session, business_id)
+    locations = session.exec(
+        select(Location).where(
+            Location.business_id == business_id,
+            Location.is_active == True,  # noqa: E712
+        ).order_by(Location.created_at.asc())
+    ).all()
+    return {
+        "business_name": biz.business_name,
+        "locations": [
+            {
+                "id": loc.id,
+                "name": loc.name,
+                "address": loc.address,
+                "phone": loc.phone,
+                "maps_link": loc.maps_link,
+            }
+            for loc in locations
+        ],
+    }
 
 
 def _get_employee_email(
@@ -66,15 +92,19 @@ def _get_employee_email(
 
 
 @router.get("/{business_id}/services")
-def get_services(business_id: str, session: SessionDep):
-    """Returns available services and employees for a business."""
+def get_services(
+    business_id: str,
+    session: SessionDep,
+    location_id: int | None = None,
+):
+    """Returns available services and employees for a business, optionally filtered by location."""
     biz = _get_business_or_404(session, business_id)
 
     products = session.exec(
         select(Product).where(Product.business_id == business_id)
     ).all()
 
-    employees = get_employees_with_availability(session, business_id)
+    employees = get_employees_with_availability(session, business_id, location_id=location_id)
 
     services = [
         {
@@ -88,10 +118,24 @@ def get_services(business_id: str, session: SessionDep):
         if p.type == "servicio"
     ]
 
+    # Include location info if location_id is provided
+    location_info = None
+    if location_id:
+        loc = session.get(Location, location_id)
+        if loc and loc.business_id == business_id:
+            location_info = {
+                "id": loc.id,
+                "name": loc.name,
+                "address": loc.address,
+                "phone": loc.phone,
+                "maps_link": loc.maps_link,
+            }
+
     return {
         "business_name": biz.business_name,
         "services": services,
         "employees": employees,
+        "location": location_info,
     }
 
 
@@ -154,6 +198,7 @@ def create_booking_request(
         employee_name=body.employee_name,
         service=body.service,
         requested_date=body.requested_date,
+        location_id=body.location_id,
     )
     session.add(booking)
     session.commit()
@@ -161,9 +206,20 @@ def create_booking_request(
 
     # Send confirmation email to client
     date_str = booking.requested_date.strftime("%d/%m/%Y %H:%M")
+
+    # Get location info for emails
+    location_name = None
+    location_address = None
+    if booking.location_id:
+        loc = session.get(Location, booking.location_id)
+        if loc:
+            location_name = loc.name
+            location_address = loc.address
+
     subject, html = email_request_received_client(
         booking.client_name, booking.service, date_str, biz.business_name, booking.employee_name,
         business_phone=biz.business_phone, business_email=biz.business_email,
+        location_name=location_name, location_address=location_address,
     )
     send_email(booking.client_email, subject, html)
 
