@@ -48,12 +48,12 @@ class TestBuildCapabilities:
         assert caps.can_manage_finances is True
         assert caps.can_manage_reservations is True
 
-    def test_employee_can_only_manage_reservations(self):
+    def test_employee_can_manage_reservations_and_view_finances(self):
         caps = _build_capabilities("employee", subscription_active=True)
         assert caps.can_access_app is True
         assert caps.can_manage_configuration is False
         assert caps.can_manage_products is False
-        assert caps.can_manage_finances is False
+        assert caps.can_manage_finances is True
         assert caps.can_manage_reservations is True
 
 
