@@ -8,6 +8,7 @@ class ProductBase(SQLModel):
     price: float = Field(ge=0)
     type: Optional[str] = None
     image_url: Optional[str] = None
+    seller: Optional[str] = None
 
 
 class Product(ProductBase, table=True):
@@ -26,3 +27,4 @@ class ProductUpdate(ProductBase):
     price: Optional[float] = Field(default=None, ge=0)
     type: Optional[str] = None
     image_url: Optional[str] = None
+    seller: Optional[str] = None

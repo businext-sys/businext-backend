@@ -1,4 +1,4 @@
-notas.txt
+INSTRUCCIONES_BACKEND_LOCAL.txt
 
 # Entorno virtual y .env
 .venv/
@@ -10,3 +10,4 @@ __pycache__/
 
 # Archivos de migraciones generados automáticamente
 alembic/versions/
+
