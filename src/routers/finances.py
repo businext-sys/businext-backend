@@ -10,6 +10,7 @@ from ..database.models.finances_model import (
     FinancesUpdate,
 )
 from ..database.models.profile_model import Profile
+from ..database.models.product_model import Product
 from src.api.auth import AuthContext, require_manager_or_owner, require_subscription
 
 
@@ -127,8 +128,31 @@ def create_finances(
             )
     finances_data = finances.model_dump()
     finances_data["business_id"] = auth.business_id
+
+    # Look up commission percentage if linked to a product
+    commission_amount = 0.0
+    commission_pct = 0.0
+    if finances.product_id:
+        product = session.get(Product, finances.product_id)
+        if product and product.commission_percentage and product.business_id == auth.business_id:
+            commission_pct = product.commission_percentage
+            commission_amount = round(finances.amount * commission_pct / 100, 2)
+
     finances_obj = Finances(**finances_data)
     session.add(finances_obj)
+
+    # Auto-create commission expense record when applicable
+    if commission_amount > 0 and finances.type == "INCOME":
+        commission_record = Finances(
+            concept=f"Comisión ({commission_pct:.0f}%) por {finances.concept}",
+            amount=commission_amount,
+            type="EXPENSE",
+            creator=finances.creator,
+            business_id=auth.business_id,
+            product_id=finances.product_id,
+        )
+        session.add(commission_record)
+
     session.commit()
     session.refresh(finances_obj)
     return finances_obj

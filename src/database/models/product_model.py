@@ -9,6 +9,7 @@ class ProductBase(SQLModel):
     type: Optional[str] = None
     image_url: Optional[str] = None
     seller: Optional[str] = None
+    commission_percentage: Optional[float] = Field(default=None, ge=0, le=100)
 
 
 class Product(ProductBase, table=True):
@@ -28,3 +29,4 @@ class ProductUpdate(ProductBase):
     type: Optional[str] = None
     image_url: Optional[str] = None
     seller: Optional[str] = None
+    commission_percentage: Optional[float] = Field(default=None, ge=0, le=100)
