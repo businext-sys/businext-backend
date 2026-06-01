@@ -5,7 +5,7 @@ from typing import Optional
 
 resend.api_key = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "noreply@businext.app")
-APP_URL = os.environ.get("NEXT_PUBLIC_APP_URL", "http://localhost:3000")
+APP_URL = os.environ.get("APP_URL", "http://localhost:3000")
 
 
 def send_email(to: str, subject: str, html: str, reply_to: str | None = None) -> Optional[str]:
