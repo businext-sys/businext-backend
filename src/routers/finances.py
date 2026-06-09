@@ -23,13 +23,13 @@ router = APIRouter(
 )
 
 
-def _employee_creator_name(session: SessionDep, auth: AuthContext) -> str | None:
-    """Return the employee's display name to filter finances by creator."""
-    if auth.role != "employee":
+def _non_owner_creator_name(session: SessionDep, auth: AuthContext) -> str | None:
+    """Return normalized creator name for non-owner users."""
+    if auth.role == "owner":
         return None
     profile = session.get(Profile, auth.user_id)
     if profile and profile.display_name:
-        return profile.display_name
+        return _normalize_text(profile.display_name)
     return None
 
 
@@ -134,10 +134,16 @@ def _calculate_commission(
 def _apply_employee_filter(
     query, session: SessionDep, auth: AuthContext, model
 ):
-    """Add creator filter when the user is an employee."""
-    creator = _employee_creator_name(session, auth)
-    if creator:
-        query = query.where(model.creator == creator)
+    """Add creator filter for non-owner users (employee + manager)."""
+    if auth.role == "owner":
+        return query
+
+    creator = _non_owner_creator_name(session, auth)
+    if not creator:
+        # Defensive: non-owner without profile aliases must not see all records.
+        return query.where(False)
+
+    query = query.where(func.lower(model.creator) == creator)
     return query
 
 
@@ -161,10 +167,10 @@ def get_finances_by_id(
     finances = session.get(Finances, finances_id)
     if not finances or finances.business_id != auth.business_id:
         raise HTTPException(status_code=404, detail="Finances not found")
-    # Employees can only see their own records
-    if auth.role == "employee":
-        creator = _employee_creator_name(session, auth)
-        if not creator or finances.creator != creator:
+    # Non-owners can only see their own records
+    if auth.role != "owner":
+        creator = _non_owner_creator_name(session, auth)
+        if not creator or _normalize_text(finances.creator) != creator:
             raise HTTPException(status_code=404, detail="Finances not found")
     return finances
 

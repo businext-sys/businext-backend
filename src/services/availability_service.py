@@ -18,17 +18,21 @@ def _get_hours_for_employee(
     """Get working hour blocks for a specific day.
     Employee-specific hours take priority; falls back to business-wide."""
     if member_user_id:
-        # Try employee-specific first
-        emp_hours = session.exec(
+        # Check if employee has any configuration for this day (enabled or disabled).
+        # If there is at least one row for the employee/day, do NOT fallback to
+        # business-wide hours: explicit disabled rows must keep the day closed.
+        emp_day_rows = session.exec(
             select(WorkingHours).where(
                 WorkingHours.business_id == business_id,
                 WorkingHours.day_of_week == day_of_week,
-                WorkingHours.enabled == True,  # noqa: E712
                 WorkingHours.member_user_id == member_user_id,
             )
         ).all()
-        if emp_hours:
-            return list(emp_hours)
+
+        if emp_day_rows:
+            return [row for row in emp_day_rows if row.enabled]
+
+        # No employee-specific rows for this day: fallback to business-wide.
 
     # Fallback to business-wide
     biz_hours = session.exec(
