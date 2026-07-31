@@ -1,0 +1,48 @@
+# Archivos de entorno y secretos
+.env
+.env.*
+!.env.example
+
+# Virtual envs
+.venv/
+venv/
+env/
+
+# Python bytecode y caches
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Git
+.git/
+.gitignore
+.github/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Tests (no van al contenedor de prod)
+tests/
+conftest.py
+
+# Docker no se re-empaqueta a si mismo
+Dockerfile
+docker-compose*.yml
+.dockerignore
+
+# Node artifacts que pueden haber quedado sueltos
+node_modules/
+**/node_modules/
+
+# Docs y misc
+README.md
+*.md
+INSTRUCCIONES_BACKEND_LOCAL.txt
+businext/
