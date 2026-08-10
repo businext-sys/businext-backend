@@ -13,6 +13,7 @@ from src.database.models import (
     google_review_model,
     working_hours_model,
     weekly_summary_model,
+    push_token_model,
 )
 from sqlmodel import SQLModel
 

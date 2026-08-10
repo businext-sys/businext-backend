@@ -1,6 +1,7 @@
 """Public booking endpoints — no authentication required."""
 
 from datetime import date, datetime, timezone
+
 from fastapi import APIRouter, HTTPException, Query
 from sqlmodel import select
 
@@ -10,19 +11,21 @@ from src.database.models.booking_request_model import (
     BookingRequestCreate,
 )
 from src.database.models.business_conf_model import BusinessConfiguration
-from src.database.models.product_model import Product
-from src.database.models.member_model import BusinessMember
-from src.database.models.profile_model import Profile
 from src.database.models.location_model import Location
+from src.database.models.member_model import BusinessMember
+from src.database.models.product_model import Product
+from src.database.models.profile_model import Profile
+from src.database.models.push_token_model import PushToken
 from src.services.availability_service import (
     get_available_slots,
     get_employees_with_availability,
 )
 from src.services.email_service import (
-    send_email,
     email_request_received_client,
     email_request_received_employee,
+    send_email,
 )
+from src.services.push_notification_service import send_push_notifications
 
 router = APIRouter(prefix="/public/book", tags=["public-booking"])
 
@@ -203,6 +206,20 @@ def create_booking_request(
     session.add(booking)
     session.commit()
     session.refresh(booking)
+
+    # Notificacion push al owner del negocio (issue #031). `business_id`
+    # coincide con el user_id del owner (ver AuthContext.get_auth_context),
+    # por lo que sus tokens son los registrados con ese mismo user_id.
+    owner_tokens = session.exec(
+        select(PushToken.token).where(PushToken.user_id == business_id)
+    ).all()
+    if owner_tokens:
+        send_push_notifications(
+            tokens=list(owner_tokens),
+            title="Nueva solicitud de reserva",
+            body=f"{booking.client_name} solicito {booking.service}",
+            data={"type": "booking_request", "bookingRequestId": booking.id},
+        )
 
     # Send confirmation email to client
     date_str = booking.requested_date.strftime("%d/%m/%Y %H:%M")
