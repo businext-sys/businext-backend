@@ -1,4 +1,6 @@
-from typing import Optional
+from typing import Any, Optional
+from sqlalchemy import Column
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
 from datetime import datetime
 
@@ -20,6 +22,10 @@ class Profile(SQLModel, table=True):
     last_sign_in_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     status: str = Field(default="pending")  # "pending" | "onboarded"
+    tour_state: dict[str, Any] = Field(
+        default_factory=dict,
+        sa_column=Column(JSONB, nullable=False, server_default="{}"),
+    )
 
 
 class ProfilePublic(SQLModel):
