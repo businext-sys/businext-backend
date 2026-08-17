@@ -1,6 +1,6 @@
-from typing import Optional
-from sqlmodel import Field, SQLModel, UniqueConstraint
 from datetime import date, datetime
+
+from sqlmodel import Field, SQLModel, UniqueConstraint
 
 
 class WeeklySummaryBase(SQLModel):
@@ -8,7 +8,7 @@ class WeeklySummaryBase(SQLModel):
     week_end: date
     narrative: str
     kpis: str  # JSON string
-    client_narrative: Optional[str] = None
+    client_narrative: str | None = None
 
 
 class WeeklySummary(WeeklySummaryBase, table=True):

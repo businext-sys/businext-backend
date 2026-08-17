@@ -5,8 +5,7 @@ from fastapi import HTTPException
 from sqlmodel import Session, select
 
 from src.database.models.profile_model import Profile
-from src.services.supabase_utils import get_supabase_settings, get_supabase_anon_key, get_app_url
-
+from src.services.supabase_utils import get_app_url, get_supabase_anon_key, get_supabase_settings
 
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 

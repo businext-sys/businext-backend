@@ -1,14 +1,13 @@
 import os
-import resend
-from typing import Optional
 
+import resend
 
 resend.api_key = os.environ.get("RESEND_API_KEY", "")
 FROM_EMAIL = os.environ.get("RESEND_FROM_EMAIL", "noreply@businext.app")
 APP_URL = os.environ.get("APP_URL", "http://localhost:3000")
 
 
-def send_email(to: str, subject: str, html: str, reply_to: str | None = None) -> Optional[str]:
+def send_email(to: str, subject: str, html: str, reply_to: str | None = None) -> str | None:
     """Send an email via Resend. Returns the email ID or None on failure."""
     if not resend.api_key:
         print("[email_service] RESEND_API_KEY not configured, skipping email")
@@ -209,7 +208,7 @@ def email_request_accepted(
 
 
 def email_request_rejected(
-    client_name: str, business_name: str, reason: Optional[str] = None,
+    client_name: str, business_name: str, reason: str | None = None,
     business_phone: str | None = None, business_email: str | None = None,
 ) -> tuple[str, str]:
     """Email to client when their request is rejected."""

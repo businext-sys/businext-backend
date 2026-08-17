@@ -1,4 +1,4 @@
-# Extrae el esquema de SQLite usando Python
+# Dumps the SQLite schema to esquema.sql
 import sqlite3
 
 conn = sqlite3.connect("database.db")

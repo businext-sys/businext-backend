@@ -2,11 +2,13 @@
 
 import asyncio
 from datetime import datetime, timezone
+
 from sqlmodel import Session, select
+
 from src.database.database import get_engine
 from src.database.models.booking_request_model import BookingRequest
 from src.database.models.business_conf_model import BusinessConfiguration
-from src.services.email_service import send_email, email_request_expired
+from src.services.email_service import email_request_expired, send_email
 
 
 async def expire_old_requests():

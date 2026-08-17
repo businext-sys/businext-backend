@@ -1,13 +1,15 @@
-from fastapi import APIRouter, HTTPException, Depends, Query
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import select
-from typing import Optional
+
+from src.api.auth import AuthContext, require_active_member, require_owner
+
 from ..database.database import SessionDep
 from ..database.models.working_hours_model import (
     WorkingHours,
-    WorkingHoursPublic,
     WorkingHoursInput,
+    WorkingHoursPublic,
 )
-from src.api.auth import AuthContext, require_active_member, require_owner
 
 router = APIRouter(
     prefix="/working-hours",
@@ -20,7 +22,7 @@ router = APIRouter(
 def get_working_hours(
     session: SessionDep,
     auth: AuthContext = Depends(require_active_member),
-    member_user_id: Optional[str] = Query(None, description="Filter by member. Omit for business-wide."),
+    member_user_id: str | None = Query(None, description="Filter by member. Omit for business-wide."),
 ):
     """Get working hours. If member_user_id is provided, returns that member's hours.
     Otherwise returns business-wide (general) hours."""
@@ -42,7 +44,7 @@ def upsert_working_hours(
     entries: list[WorkingHoursInput],
     session: SessionDep,
     auth: AuthContext = Depends(require_owner),
-    member_user_id: Optional[str] = Query(None, description="Set hours for a specific member. Omit for business-wide."),
+    member_user_id: str | None = Query(None, description="Set hours for a specific member. Omit for business-wide."),
 ):
     """Replace all working hour blocks for business-wide or a specific member.
     Supports multiple blocks per day."""

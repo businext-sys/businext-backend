@@ -1,6 +1,6 @@
-from typing import Optional
 from datetime import datetime, timedelta
 from uuid import uuid4
+
 from sqlmodel import Field, SQLModel
 
 
@@ -8,21 +8,21 @@ class BookingRequestBase(SQLModel):
     client_name: str
     client_email: str
     client_phone: str
-    employee_name: Optional[str] = None
+    employee_name: str | None = None
     service: str
     requested_date: datetime
-    proposed_date: Optional[datetime] = None
+    proposed_date: datetime | None = None
     status: str = Field(default="REQUESTED")
 
 
 class BookingRequest(BookingRequestBase, table=True):
-    id: Optional[int] = Field(default=None, primary_key=True)
+    id: int | None = Field(default=None, primary_key=True)
     business_id: str = Field(index=True, nullable=False)
-    location_id: Optional[int] = Field(default=None, foreign_key="location.id")
+    location_id: int | None = Field(default=None, foreign_key="location.id")
     response_token: str = Field(
         default_factory=lambda: str(uuid4()), index=True, unique=True
     )
-    responded_at: Optional[datetime] = None
+    responded_at: datetime | None = None
     expires_at: datetime = Field(
         default_factory=lambda: datetime.utcnow() + timedelta(hours=48)
     )
@@ -32,8 +32,8 @@ class BookingRequest(BookingRequestBase, table=True):
 class BookingRequestPublic(BookingRequestBase):
     id: int
     business_id: str
-    location_id: Optional[int] = None
-    responded_at: Optional[datetime] = None
+    location_id: int | None = None
+    responded_at: datetime | None = None
     expires_at: datetime
     created_at: datetime
 
@@ -42,7 +42,7 @@ class BookingRequestCreate(SQLModel):
     client_name: str
     client_email: str
     client_phone: str
-    employee_name: Optional[str] = None
+    employee_name: str | None = None
     service: str
     requested_date: datetime
-    location_id: Optional[int] = None
+    location_id: int | None = None

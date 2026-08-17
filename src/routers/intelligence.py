@@ -1,13 +1,16 @@
 from datetime import date, datetime, timedelta, timezone
-from fastapi import APIRouter, HTTPException, Depends
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
+
+from src.api.auth import AuthContext, require_subscription
+from src.services.ai_service import AIServiceError, generate_weekly_summary
+
 from ..database.database import SessionDep
-from ..database.models.weekly_summary_model import WeeklySummary, WeeklySummaryPublic
+from ..database.models.business_conf_model import BusinessConfiguration
 from ..database.models.finances_model import Finances
 from ..database.models.reservation_model import Reservation
-from ..database.models.business_conf_model import BusinessConfiguration
-from src.api.auth import AuthContext, require_subscription
-from src.services.ai_service import generate_weekly_summary, AIServiceError
+from ..database.models.weekly_summary_model import WeeklySummary, WeeklySummaryPublic
 
 router = APIRouter(
     prefix="/intelligence",
@@ -149,9 +152,12 @@ def generate_summary(
             prev_week_narrative=prev_narrative,
         )
     except AIServiceError as e:
-        raise HTTPException(status_code=503, detail=str(e))
-    except Exception:
-        raise HTTPException(status_code=503, detail="El servicio de IA no está disponible. Inténtalo de nuevo más tarde.")
+        raise HTTPException(status_code=503, detail=str(e)) from e
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="El servicio de IA no está disponible. Inténtalo de nuevo más tarde.",
+        ) from exc
 
     summary = WeeklySummary(
         business_id=auth.business_id,

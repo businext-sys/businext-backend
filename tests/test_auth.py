@@ -4,22 +4,19 @@ Tests for centralized authorization in src/api/auth.py.
 These tests verify the authorization matrix without a real database by
 mocking the session and Subscription/BusinessMember lookups.
 """
+
 import pytest
-from unittest.mock import MagicMock, patch
 from fastapi import HTTPException
 
 from src.api.auth import (
     AuthContext,
-    AccessCapabilities,
     _build_capabilities,
     _get_user_id_from_token,
-    get_auth_context,
     require_active_member,
-    require_subscription,
-    require_owner,
     require_manager_or_owner,
+    require_owner,
+    require_subscription,
 )
-
 
 # ---------------------------------------------------------------------------
 # _build_capabilities

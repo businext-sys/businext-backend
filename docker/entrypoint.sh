@@ -1,12 +1,10 @@
 #!/usr/bin/env sh
-# Entrypoint del contenedor de Businext backend.
+# Businext backend container entrypoint.
 #
-# Comportamiento:
-# - Si RUN_MIGRATIONS=1 (por defecto), aplica migraciones Alembic antes de arrancar.
-#   Se resuelve el hardcode de sqlalchemy.url en alembic.ini sobreescribiendolo
-#   con DATABASE_MIGRATION_URI en tiempo de ejecucion.
-# - Arranca uvicorn con un solo worker (main.py usa lifespan con background task,
-#   correr multiples workers duplicaria ese task).
+# With RUN_MIGRATIONS=1 (the default) Alembic runs first, overriding the
+# hardcoded sqlalchemy.url in alembic.ini with DATABASE_MIGRATION_URI.
+# uvicorn defaults to a single worker: main.py's lifespan starts a background
+# task that extra workers would duplicate.
 
 set -eu
 
@@ -16,21 +14,21 @@ UVICORN_WORKERS="${UVICORN_WORKERS:-1}"
 
 if [ "$RUN_MIGRATIONS" = "1" ]; then
   if [ -z "${DATABASE_MIGRATION_URI:-}" ]; then
-    echo "WARN: DATABASE_MIGRATION_URI no definida, se usa la url del alembic.ini tal cual."
+    echo "WARN: DATABASE_MIGRATION_URI unset, using the alembic.ini url as-is."
     alembic upgrade head
   else
-    echo "Aplicando migraciones con DATABASE_MIGRATION_URI (override de alembic.ini)..."
-    # Escapar '/' y '&' para sed.
+    echo "Running migrations with DATABASE_MIGRATION_URI..."
+    # Escape '/' and '&' for sed, then patch alembic.ini in place (not persisted
+    # in the image).
     escaped_url=$(printf '%s' "$DATABASE_MIGRATION_URI" | sed -e 's/[\/&]/\\&/g')
-    # Reescribir sqlalchemy.url en alembic.ini in-place, sin persistir en la imagen.
     sed -i "s|^sqlalchemy.url = .*|sqlalchemy.url = ${escaped_url}|" alembic.ini
     alembic upgrade head
   fi
 else
-  echo "RUN_MIGRATIONS=0, se saltan las migraciones."
+  echo "RUN_MIGRATIONS=0, skipping migrations."
 fi
 
-echo "Arrancando uvicorn en puerto ${PORT} con ${UVICORN_WORKERS} worker(s)..."
+echo "Starting uvicorn on port ${PORT} with ${UVICORN_WORKERS} worker(s)..."
 exec uvicorn src.main:app \
   --host 0.0.0.0 \
   --port "$PORT" \

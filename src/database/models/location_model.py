@@ -1,13 +1,13 @@
-from typing import Optional
-from sqlmodel import Field, SQLModel
 from datetime import datetime
+
+from sqlmodel import Field, SQLModel
 
 
 class LocationBase(SQLModel):
     name: str
-    address: Optional[str] = None
-    phone: Optional[str] = None
-    maps_link: Optional[str] = None
+    address: str | None = None
+    phone: str | None = None
+    maps_link: str | None = None
 
 
 class Location(LocationBase, table=True):
@@ -31,14 +31,14 @@ class LocationPublic(LocationBase):
 
 class LocationCreate(SQLModel):
     name: str
-    address: Optional[str] = None
-    phone: Optional[str] = None
-    maps_link: Optional[str] = None
+    address: str | None = None
+    phone: str | None = None
+    maps_link: str | None = None
 
 
 class LocationUpdate(SQLModel):
-    name: Optional[str] = None
-    address: Optional[str] = None
-    phone: Optional[str] = None
-    maps_link: Optional[str] = None
-    is_active: Optional[bool] = None
+    name: str | None = None
+    address: str | None = None
+    phone: str | None = None
+    maps_link: str | None = None
+    is_active: bool | None = None

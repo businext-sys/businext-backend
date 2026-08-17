@@ -64,6 +64,7 @@ def get_access_context(
             "email": profile.email if profile else None,
             "phone": profile.phone if profile else None,
         },
+        "tourState": (profile.tour_state or {}) if profile else {},
         "capabilities": {
             "canAccessApp": auth.capabilities.can_access_app,
             "canManageConfiguration": auth.capabilities.can_manage_configuration,

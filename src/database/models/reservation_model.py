@@ -1,6 +1,6 @@
-from typing import Optional
-from sqlmodel import Field, SQLModel
 from datetime import datetime
+
+from sqlmodel import Field, SQLModel
 
 
 class ReservationBase(SQLModel):
@@ -24,10 +24,10 @@ class ReservationPublic(ReservationBase):
 
 
 class ReservationUpdate(ReservationBase):
-    customer_name: Optional[str] = None
-    in_charge: Optional[str] = None
-    reservation_start_date: Optional[datetime] = None
-    reservation_end_date: Optional[datetime] = None
+    customer_name: str | None = None
+    in_charge: str | None = None
+    reservation_start_date: datetime | None = None
+    reservation_end_date: datetime | None = None
     time_per_reservation: int  # in minutes
-    status: Optional[str] = None
-    service: Optional[str] = None
+    status: str | None = None
+    service: str | None = None

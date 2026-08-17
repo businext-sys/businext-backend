@@ -1,19 +1,18 @@
 """
-Tests para src/routers/push_token.py (issue #031).
+Tests for src/routers/push_token.py.
 
-Usa SQLite en memoria para el modelo PushToken y un override de
-`get_auth_context` (mismo enfoque que test_auth.py: no se golpea Supabase
-ni un JWT real).
+Uses in-memory SQLite plus a `get_auth_context` override, so no Supabase
+call or real JWT is involved (same approach as test_auth.py).
 """
 import pytest
 from fastapi.testclient import TestClient
-from sqlmodel import SQLModel, Session, create_engine
 from sqlalchemy.pool import StaticPool
+from sqlmodel import Session, SQLModel, create_engine
 
-from src.main import app
+from src.api.auth import AccessCapabilities, AuthContext, get_auth_context
 from src.database.database import get_session
-from src.api.auth import AuthContext, AccessCapabilities, get_auth_context
-from src.database.models.push_token_model import PushToken  # noqa: F401 (registra la tabla)
+from src.database.models.push_token_model import PushToken
+from src.main import app
 
 
 @pytest.fixture(name="session")
@@ -65,10 +64,10 @@ class TestRegisterPushToken:
         assert response.status_code == 403
 
     def test_reassigns_existing_token_to_new_user(self, client: TestClient, session: Session):
-        # Registrar el token con user-1
+        # Register the token as user-1.
         client.post("/users/user-1/push-tokens", json={"token": "ExponentPushToken[dup]"})
 
-        # El mismo token ahora se registra desde otra cuenta autenticada.
+        # The same token is now registered from another authenticated account.
         def other_user_auth():
             return AuthContext(
                 user_id="user-2",

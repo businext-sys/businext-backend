@@ -1,6 +1,6 @@
-from typing import Optional
-from sqlmodel import Field, SQLModel, UniqueConstraint
 from datetime import datetime
+
+from sqlmodel import Field, SQLModel, UniqueConstraint
 
 
 class WorkingHoursBase(SQLModel):
@@ -8,7 +8,7 @@ class WorkingHoursBase(SQLModel):
     start_time: str  # HH:MM format, e.g. "09:00"
     end_time: str  # HH:MM format, e.g. "18:00"
     enabled: bool = True
-    member_user_id: Optional[str] = None  # If null, applies to all employees (business-wide)
+    member_user_id: str | None = None  # If null, applies to all employees (business-wide)
 
 
 class WorkingHours(WorkingHoursBase, table=True):
@@ -30,15 +30,15 @@ class WorkingHoursPublic(SQLModel):
     start_time: str
     end_time: str
     enabled: bool
-    member_user_id: Optional[str] = None
+    member_user_id: str | None = None
 
 
 class WorkingHoursUpdate(SQLModel):
-    day_of_week: Optional[int] = None
-    start_time: Optional[str] = None
-    end_time: Optional[str] = None
-    enabled: Optional[bool] = None
-    member_user_id: Optional[str] = None
+    day_of_week: int | None = None
+    start_time: str | None = None
+    end_time: str | None = None
+    enabled: bool | None = None
+    member_user_id: str | None = None
 
 
 class WorkingHoursInput(SQLModel):

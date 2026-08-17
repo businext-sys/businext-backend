@@ -1,22 +1,23 @@
 """Authenticated booking-requests endpoints — require JWT."""
 
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, HTTPException, Depends
+
+from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
 
-from src.database.database import SessionDep
 from src.api.auth import AuthContext, require_subscription
+from src.database.database import SessionDep
 from src.database.models.booking_request_model import (
     BookingRequest,
     BookingRequestPublic,
 )
-from src.database.models.reservation_model import Reservation
 from src.database.models.business_conf_model import BusinessConfiguration
 from src.database.models.location_model import Location
+from src.database.models.reservation_model import Reservation
 from src.services.email_service import (
-    send_email,
     email_request_accepted,
     email_request_rejected,
+    send_email,
 )
 
 router = APIRouter(prefix="/booking-requests", tags=["booking-requests"])

@@ -1,7 +1,10 @@
 import datetime
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import and_, case, func
 from sqlmodel import select
+
+from src.api.auth import AuthContext, require_manager_or_owner, require_subscription
 
 from ..database.database import SessionDep
 from ..database.models.business_conf_model import BusinessConfiguration
@@ -13,8 +16,6 @@ from ..database.models.finances_model import (
 )
 from ..database.models.product_model import Product
 from ..database.models.profile_model import Profile
-from src.api.auth import AuthContext, require_manager_or_owner, require_subscription
-
 
 router = APIRouter(
     prefix="/finances",

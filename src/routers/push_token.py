@@ -1,4 +1,4 @@
-"""Registro de tokens de Expo Push Notifications (issue #031)."""
+"""Expo push token registration."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
@@ -22,15 +22,11 @@ def register_push_token(
     auth: AuthContext = Depends(get_auth_context),
 ):
     """
-    Registra (o reasigna) un Expo push token para un usuario.
+    Register (or reassign) an Expo push token for a user.
 
-    No requiere suscripcion activa (a diferencia de la mayoria de
-    endpoints) porque registrar el token del dispositivo debe funcionar
-    incluso si la suscripcion del owner esta vencida — es la propia app
-    quien decide que UI mostrar segun `capabilities.can_access_app`.
-
-    Solo el propio usuario puede registrar su token (`user_id` del path
-    debe coincidir con el del JWT).
+    Unlike most endpoints this does not require an active subscription:
+    the app decides which UI to show from `capabilities.can_access_app`.
+    Users may only register their own token.
     """
     if user_id != auth.user_id:
         raise HTTPException(
@@ -43,8 +39,7 @@ def register_push_token(
     ).first()
 
     if existing:
-        # El mismo token de dispositivo puede haber quedado asociado a otro
-        # usuario (ej. logout + login con otra cuenta en el mismo telefono).
+        # Same device, different account (logout + login): reassign the token.
         existing.user_id = user_id
         session.add(existing)
         session.commit()
@@ -65,7 +60,7 @@ def unregister_push_token(
     session: SessionDep,
     auth: AuthContext = Depends(get_auth_context),
 ):
-    """Elimina un push token (ej. al hacer logout en el dispositivo)."""
+    """Unregister a push token, e.g. on device logout."""
     if user_id != auth.user_id:
         raise HTTPException(
             status_code=403,
