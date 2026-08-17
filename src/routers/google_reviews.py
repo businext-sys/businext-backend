@@ -1,9 +1,23 @@
 import json
 from datetime import datetime, timezone
-from typing import Optional
-from fastapi import APIRouter, HTTPException, Query, Depends
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
-from sqlmodel import select, col
+from sqlmodel import col, select
+
+from src.api.auth import AuthContext, require_subscription
+from src.services.ai_service import (
+    AIServiceError,
+    generate_business_summary,
+    generate_review_response,
+)
+from src.services.outscraper_service import (
+    OutscraperError,
+    OutscraperQueuedError,
+    extract_google_id,
+    fetch_business_and_reviews,
+)
+
 from ..database.database import SessionDep
 from ..database.models.google_business_profile_model import (
     GoogleBusinessProfile,
@@ -12,18 +26,6 @@ from ..database.models.google_business_profile_model import (
 from ..database.models.google_review_model import (
     GoogleReview,
     GoogleReviewPublic,
-)
-from src.api.auth import AuthContext, require_subscription
-from src.services.outscraper_service import (
-    extract_google_id,
-    fetch_business_and_reviews,
-    OutscraperError,
-    OutscraperQueuedError,
-)
-from src.services.ai_service import (
-    generate_review_response,
-    generate_business_summary,
-    AIServiceError,
 )
 
 router = APIRouter(
@@ -129,7 +131,7 @@ def create_profile(
     try:
         place_data = fetch_business_and_reviews(google_id)
     except OutscraperError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     now = datetime.now(timezone.utc)
 
@@ -230,9 +232,9 @@ def sync_reviews(
             cutoff=profile.last_review_timestamp,
         )
     except OutscraperQueuedError as e:
-        raise HTTPException(status_code=503, detail=str(e))
+        raise HTTPException(status_code=503, detail=str(e)) from e
     except OutscraperError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     now = datetime.now(timezone.utc)
 
@@ -283,9 +285,9 @@ def get_reviews(
     auth: AuthContext = Depends(require_subscription),
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    rating: Optional[int] = Query(default=None, ge=1, le=5),
+    rating: int | None = Query(default=None, ge=1, le=5),
     sort: str = Query(default="newest"),
-    search: Optional[str] = Query(default=None),
+    search: str | None = Query(default=None),
 ):
     """Get paginated reviews for the business."""
     # Base query
@@ -358,7 +360,7 @@ def generate_response_for_review(
             business_name=business_name,
         )
     except AIServiceError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     now = datetime.now(timezone.utc)
     review.ai_generated_response = response_text
@@ -413,7 +415,7 @@ def generate_summary(
     try:
         summary = generate_business_summary(review_dicts, profile.name or "Negocio")
     except AIServiceError as e:
-        raise HTTPException(status_code=502, detail=str(e))
+        raise HTTPException(status_code=502, detail=str(e)) from e
 
     # Persist summary
     now = datetime.now(timezone.utc)

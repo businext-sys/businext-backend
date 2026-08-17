@@ -1,5 +1,6 @@
-import re
 import os
+import re
+
 import httpx
 from dotenv import load_dotenv
 
@@ -47,8 +48,10 @@ def fetch_business_and_reviews(
 
     try:
         response = httpx.get(OUTSCRAPER_BASE_URL, params=params, headers=headers, timeout=120.0)
-    except httpx.TimeoutException:
-        raise OutscraperError("El servicio de reseñas tardó demasiado en responder. Intenta de nuevo.")
+    except httpx.TimeoutException as exc:
+        raise OutscraperError(
+            "El servicio de reseñas tardó demasiado en responder. Intenta de nuevo."
+        ) from exc
 
     if response.status_code == 202:
         raise OutscraperQueuedError("Solicitud en cola. Intenta de nuevo en unos momentos.")

@@ -1,6 +1,6 @@
-from typing import Optional
-from sqlmodel import Field, SQLModel
 from datetime import datetime
+
+from sqlmodel import Field, SQLModel
 
 
 class BusinessMember(SQLModel, table=True):
@@ -13,7 +13,7 @@ class BusinessMember(SQLModel, table=True):
     member_user_id: str = Field(index=True, nullable=False)
     role: str = Field(default="employee")  # "manager" | "employee"
     status: str = Field(default="active")  # "pending" | "active" | "inactive"
-    location_id: Optional[int] = Field(default=None, foreign_key="location.id")
+    location_id: int | None = Field(default=None, foreign_key="location.id")
     created_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -23,7 +23,7 @@ class BusinessMemberPublic(SQLModel):
     member_user_id: str
     role: str
     status: str
-    location_id: Optional[int] = None
+    location_id: int | None = None
     created_at: datetime
 
 
@@ -33,6 +33,6 @@ class BusinessMemberCreate(SQLModel):
 
 
 class BusinessMemberUpdate(SQLModel):
-    role: Optional[str] = None
-    status: Optional[str] = None
-    location_id: Optional[int] = None
+    role: str | None = None
+    status: str | None = None
+    location_id: int | None = None

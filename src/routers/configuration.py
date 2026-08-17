@@ -1,14 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlmodel import select
+
+from src.api.auth import AuthContext, require_owner, require_subscription
+
 from ..database.database import SessionDep
 from ..database.models.business_conf_model import (
-    BusinessConfigurationPublic,
     BusinessConfiguration,
     BusinessConfigurationBase,
+    BusinessConfigurationPublic,
     BusinessConfigurationUpdate,
 )
-from src.api.auth import AuthContext, require_subscription, require_owner
-
 
 router = APIRouter(
     prefix="/configuration",

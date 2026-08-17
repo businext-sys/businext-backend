@@ -1,14 +1,17 @@
 from typing import Annotated
-from fastapi import APIRouter, HTTPException, Query, Depends
+
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlmodel import select
+
+from src.api.auth import AuthContext, require_manager_or_owner, require_subscription
+
 from ..database.database import SessionDep
 from ..database.models.product_model import (
     Product,
-    ProductPublic,
     ProductBase,
+    ProductPublic,
     ProductUpdate,
 )
-from src.api.auth import AuthContext, require_subscription, require_manager_or_owner
 
 router = APIRouter(
     prefix="/products",

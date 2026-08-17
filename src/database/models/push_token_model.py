@@ -5,12 +5,10 @@ from sqlmodel import Field, SQLModel
 
 class PushToken(SQLModel, table=True):
     """
-    Token de Expo Push Notifications de un dispositivo movil, asociado a
-    un usuario (issue #031 de businext-sys/businext, Fase 5).
+    Expo push token for one device, owned by a user.
 
-    Un usuario puede tener varios tokens (varios dispositivos). El mismo
-    token nunca deberia repetirse para dos usuarios distintos (si un
-    dispositivo se re-registra con otro usuario, se reasigna).
+    A user may have several tokens (one per device), but a token is never
+    shared between users: re-registering reassigns it.
     """
 
     id: int | None = Field(default=None, primary_key=True)

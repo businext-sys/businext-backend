@@ -4,8 +4,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 
 from src.api.auth import AuthContext, get_auth_context, require_owner
-from src.routers.auth_context import SuccessResponse
 from src.database.database import SessionDep
+from src.routers.auth_context import SuccessResponse
 from src.services.employee_service import (
     complete_employee_onboarding,
     delete_employee,

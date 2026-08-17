@@ -1,8 +1,9 @@
-from typing import Any, Optional
-from sqlalchemy import Column
+from datetime import datetime
+from typing import Any
+
+from sqlalchemy import JSON, Column
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlmodel import Field, SQLModel
-from datetime import datetime
 
 
 class Profile(SQLModel, table=True):
@@ -13,31 +14,36 @@ class Profile(SQLModel, table=True):
     """
 
     id: str = Field(primary_key=True)  # UUID matching auth.users.id
-    display_name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    provider_type: Optional[str] = None
-    providers: Optional[str] = None  # JSON array stored as text
-    created_at: Optional[datetime] = None
-    last_sign_in_at: Optional[datetime] = None
-    updated_at: Optional[datetime] = None
+    display_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    provider_type: str | None = None
+    providers: str | None = None  # JSON array stored as text
+    created_at: datetime | None = None
+    last_sign_in_at: datetime | None = None
+    updated_at: datetime | None = None
     status: str = Field(default="pending")  # "pending" | "onboarded"
     tour_state: dict[str, Any] = Field(
         default_factory=dict,
-        sa_column=Column(JSONB, nullable=False, server_default="{}"),
+        # JSONB on Postgres, plain JSON elsewhere (SQLite in tests).
+        sa_column=Column(
+            JSON().with_variant(JSONB, "postgresql"),
+            nullable=False,
+            server_default="{}",
+        ),
     )
 
 
 class ProfilePublic(SQLModel):
     id: str
-    display_name: Optional[str] = None
-    email: Optional[str] = None
-    phone: Optional[str] = None
-    provider_type: Optional[str] = None
+    display_name: str | None = None
+    email: str | None = None
+    phone: str | None = None
+    provider_type: str | None = None
     status: str
 
 
 class ProfileUpdate(SQLModel):
-    display_name: Optional[str] = None
-    phone: Optional[str] = None
-    status: Optional[str] = None
+    display_name: str | None = None
+    phone: str | None = None
+    status: str | None = None

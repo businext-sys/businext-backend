@@ -1,0 +1,36 @@
+line-length = 100
+target-version = "py312"
+
+exclude = [
+    "alembic",
+    "**/node_modules",
+]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+    "C4",  # flake8-comprehensions
+    "RUF", # ruff-specific rules
+]
+ignore = [
+    "E501",  # long lines are mostly HTML email templates and AI prompts
+    "UP017", # `datetime.UTC` needs 3.11+; keep `timezone.utc` for local envs
+]
+
+[lint.flake8-bugbear]
+# FastAPI relies on call expressions as parameter defaults.
+extend-immutable-calls = [
+    "fastapi.Body",
+    "fastapi.Depends",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Header",
+    "fastapi.Path",
+    "fastapi.Query",
+    "fastapi.Security",
+]

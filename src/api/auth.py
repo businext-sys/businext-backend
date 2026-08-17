@@ -1,9 +1,10 @@
+import os
 from dataclasses import dataclass, field
-from fastapi import Depends, Header, HTTPException
-from jwt import InvalidTokenError, ExpiredSignatureError
+
 import jwt
 from dotenv import load_dotenv
-import os
+from fastapi import Depends, Header, HTTPException
+from jwt import ExpiredSignatureError, InvalidTokenError
 from sqlmodel import select
 
 from src.database.database import SessionDep
@@ -81,10 +82,10 @@ def _get_user_id_from_token(authorization: str) -> str:
         if not user_id:
             raise HTTPException(status_code=401, detail="Token missing subject")
         return user_id
-    except ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except InvalidTokenError:
-        raise HTTPException(status_code=401, detail="Invalid token")
+    except ExpiredSignatureError as exc:
+        raise HTTPException(status_code=401, detail="Token expired") from exc
+    except InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="Invalid token") from exc
 
 
 def _has_active_subscription(session: SessionDep, business_id: str) -> bool:

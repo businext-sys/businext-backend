@@ -154,8 +154,10 @@ def get_availability(
 
     try:
         target_date = date.fromisoformat(date_param)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD")
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=422, detail="Invalid date format. Use YYYY-MM-DD"
+        ) from exc
 
     slots = get_available_slots(session, business_id, target_date, employee_name)
 
@@ -207,9 +209,8 @@ def create_booking_request(
     session.commit()
     session.refresh(booking)
 
-    # Notificacion push al owner del negocio (issue #031). `business_id`
-    # coincide con el user_id del owner (ver AuthContext.get_auth_context),
-    # por lo que sus tokens son los registrados con ese mismo user_id.
+    # Push the owner: business_id is the owner's user_id, so their tokens
+    # are the ones registered under it (see AuthContext.get_auth_context).
     owner_tokens = session.exec(
         select(PushToken.token).where(PushToken.user_id == business_id)
     ).all()

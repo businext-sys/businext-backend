@@ -1,14 +1,14 @@
-from typing import Optional
-from sqlmodel import Field, SQLModel
 from datetime import datetime
+
+from sqlmodel import Field, SQLModel
 
 
 class ProductBase(SQLModel):
     name: str
     price: float = Field(ge=0)
-    type: Optional[str] = None
-    image_url: Optional[str] = None
-    seller: Optional[str] = None
+    type: str | None = None
+    image_url: str | None = None
+    seller: str | None = None
 
 
 class Product(ProductBase, table=True):
@@ -23,8 +23,8 @@ class ProductPublic(ProductBase):
 
 
 class ProductUpdate(ProductBase):
-    name: Optional[str] = None
-    price: Optional[float] = Field(default=None, ge=0)
-    type: Optional[str] = None
-    image_url: Optional[str] = None
-    seller: Optional[str] = None
+    name: str | None = None
+    price: float | None = Field(default=None, ge=0)
+    type: str | None = None
+    image_url: str | None = None
+    seller: str | None = None

@@ -1,8 +1,9 @@
-import os
 import json
+import os
 from datetime import datetime, timezone
-from openai import OpenAI
+
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 

@@ -11,7 +11,6 @@ from src.database.models.member_model import BusinessMember
 from src.database.models.profile_model import Profile
 from src.services.supabase_utils import get_app_url, get_supabase_settings
 
-
 EMAIL_REGEX = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 

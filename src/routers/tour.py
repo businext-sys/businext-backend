@@ -3,8 +3,8 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
-from sqlmodel import select
 from sqlalchemy.orm.attributes import flag_modified
+from sqlmodel import select
 
 from src.api.auth import AuthContext, get_auth_context
 from src.database.database import SessionDep

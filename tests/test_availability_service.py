@@ -1,4 +1,4 @@
-from sqlmodel import SQLModel, Session, create_engine
+from sqlmodel import Session, SQLModel, create_engine
 
 from src.database.models.working_hours_model import WorkingHours
 from src.services.availability_service import _get_hours_for_employee

@@ -1,6 +1,4 @@
-"""
-Tests para src/services/push_notification_service.py (issue #031).
-"""
+"""Tests for src/services/push_notification_service.py."""
 from unittest.mock import MagicMock, patch
 
 from src.services.push_notification_service import send_push_notifications
@@ -41,10 +39,10 @@ class TestSendPushNotifications:
         mock_client.__enter__.return_value.post.return_value = mock_response
 
         with patch("httpx.Client", return_value=mock_client):
-            # No debe lanzar excepcion aunque Expo responda con error.
+            # Must not raise even when Expo returns an error.
             send_push_notifications(["token-1"], "T", "B")
 
     def test_does_not_raise_on_network_exception(self):
         with patch("httpx.Client", side_effect=Exception("network down")):
-            # No debe lanzar excepcion si falla la conexion.
+            # Must not raise when the connection fails.
             send_push_notifications(["token-1"], "T", "B")
