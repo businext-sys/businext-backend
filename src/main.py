@@ -17,6 +17,7 @@ from .routers import (
     public_booking,
     push_token,
     reservation,
+    tour,
     working_hours,
 )
 from .services.expiration_service import expire_old_requests
@@ -64,3 +65,4 @@ app.include_router(public_booking.router)
 app.include_router(booking_request.router)
 app.include_router(location.router)
 app.include_router(push_token.router)
+app.include_router(tour.router)
