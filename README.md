@@ -79,29 +79,51 @@ Si sirves la web en otro puerto, hay que anadirlo a la lista `origins`.
 ## Migraciones
 
 **`alembic/versions/` esta en el `.gitignore` y nunca se commiteo**: el repo no
-contiene ninguna revision. `alembic upgrade head` no falla, simplemente no
-aplica nada, asi que **no puede construir el esquema desde una base de datos
-vacia**.
+contiene ninguna revision (`alembic heads` devuelve vacio). La base de datos
+real, en cambio, tiene su `alembic_version` sellada en la revision `014`: esas
+14 revisiones existieron en la maquina de alguien y no se versionaron.
+
+Consecuencia concreta: **`alembic upgrade head` falla** contra la base real.
+
+```
+$ alembic upgrade head
+ERROR [alembic.util.messaging] Can't locate revision identified by '014'
+FAILED: Can't locate revision identified by '014'
+```
+
+Falla al resolver el grafo de revisiones, antes de tocar el esquema, asi que no
+es destructivo — pero no funciona. Y contra una base vacia no fallaria, pero no
+aplicaria nada, asi que tampoco puede construir el esquema desde cero.
 
 En la practica:
 
 - Apunta `DATABASE_URI` a la base de Supabase ya migrada. No levantes un
   Postgres local vacio esperando que Alembic lo pueble.
-- `docker/entrypoint.sh` con `RUN_MIGRATIONS=1` (el default) tampoco aplica
-  nada por el mismo motivo.
+- **En Docker, arranca con `RUN_MIGRATIONS=0`.** El entrypoint corre con
+  `set -eu`, asi que el fallo de `alembic upgrade head` mata el contenedor
+  antes de que uvicorn llegue a arrancar.
 - Cualquier tabla nueva hay que crearla a mano en Supabase. Caso conocido:
   `push_token` (issue #031 del monorepo).
 - `alembic/env.py` si tiene `target_metadata = SQLModel.metadata`, asi que la
   autogeneracion funcionaria; lo que falta es versionar el resultado.
 
-Arreglar esto (quitar `alembic/versions/` del `.gitignore` y commitear un
-baseline generado con `alembic revision --autogenerate`) es deuda tecnica
-pendiente.
+Salir de esto (deuda tecnica pendiente) es: quitar `alembic/versions/` del
+`.gitignore`, generar un baseline con `alembic revision --autogenerate`,
+sellarlo con `alembic stamp <rev>` para que coincida con lo que ya hay en la
+base, y commitearlo.
 
-> ⚠️ `alembic.ini` tiene una `sqlalchemy.url` con credenciales de Supabase
-> hardcodeadas y commiteadas. `docker/entrypoint.sh` ya la sobreescribe en
-> runtime con `DATABASE_MIGRATION_URI`, asi que el hardcode no aporta nada:
-> conviene rotar esa credencial y dejar un placeholder.
+### De donde sale la URL
+
+`alembic.ini` esta commiteado y **el repo es publico**, asi que no contiene
+ninguna credencial. `alembic/env.py` resuelve la URL en tiempo de ejecucion:
+
+1. `DATABASE_MIGRATION_URI`, si esta definida (permite migrar con un rol mas
+   privilegiado que el de la app en runtime).
+2. `DATABASE_URI` como fallback — la misma que usa la app.
+3. Si no hay ninguna, aborta con un `RuntimeError` explicito.
+
+Un `%` literal en la contrasena se escapa solo antes de pasarlo a
+`set_main_option` (configparser interpola `%`).
 
 ## Estructura
 
@@ -141,8 +163,12 @@ qa-runner).
 
 ```bash
 docker build --target prod -t businext-backend .
-docker run --rm -p 8000:8000 --env-file .env businext-backend
+docker run --rm -p 8000:8000 --env-file .env -e RUN_MIGRATIONS=0 businext-backend
 ```
+
+`RUN_MIGRATIONS=0` no es opcional hoy: con el default (`1`) el contenedor
+muere al arrancar, porque `alembic upgrade head` falla (ver
+[Migraciones](#migraciones)) y el entrypoint corre con `set -eu`.
 
 Variables que lee el entrypoint: `PORT` (default 8000), `UVICORN_WORKERS`
 (default 1, no lo subas — ver la nota del `lifespan`), `RUN_MIGRATIONS`

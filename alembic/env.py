@@ -1,5 +1,7 @@
+import os
 from logging.config import fileConfig
 
+from dotenv import load_dotenv
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
 
@@ -25,6 +27,34 @@ config = context.config
 # This line sets up loggers basically.
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
+
+load_dotenv()
+
+
+def _database_url() -> str:
+    """URL de la base de datos para las migraciones, resuelta del entorno.
+
+    `alembic.ini` esta commiteado en un repo publico, asi que no puede
+    contener credenciales: la URL se resuelve aqui en tiempo de ejecucion.
+
+    Se prefiere `DATABASE_MIGRATION_URI` para poder migrar con un rol
+    distinto (mas privilegiado) del que usa la app en runtime; si no esta
+    definida, se cae a la misma `DATABASE_URI` que usa
+    `src/database/database.py`.
+    """
+    url = os.getenv("DATABASE_MIGRATION_URI") or os.getenv("DATABASE_URI")
+    if not url:
+        raise RuntimeError(
+            "No hay URL de base de datos para las migraciones. Define "
+            "DATABASE_MIGRATION_URI o DATABASE_URI en el entorno (o en un "
+            ".env en la raiz del repo)."
+        )
+    # configparser interpola '%', asi que un '%' literal en la contrasena
+    # tiene que escaparse antes de pasarlo por set_main_option.
+    return url.replace("%", "%%")
+
+
+config.set_main_option("sqlalchemy.url", _database_url())
 
 # add your model's MetaData object here
 # for 'autogenerate' support
