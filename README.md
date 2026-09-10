@@ -1,6 +1,6 @@
 # businext-backend
 
-<!-- staging: retrigger deploy 2026-09-10 -->
+<!-- staging: retrigger deploy 2026-09-10 (2) -->
 
 API de Businext: FastAPI + SQLModel sobre Postgres (Supabase), con
 autenticacion por JWT de Supabase.
