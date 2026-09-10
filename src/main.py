@@ -35,11 +35,23 @@ app = FastAPI(lifespan=lifespan)
 origins = [
     "http://localhost:3000",
     "https://businext.greenfourtech.com",
+    # Staging frontend (Vercel preview, stable branch alias)
+    "https://businext-frontend-git-staging-daniflorezms-projects.vercel.app",
 ]
+
+# Vercel genera un subdominio distinto por cada deploy de preview
+# (businext-frontend-<hash>-daniflorezms-projects.vercel.app). El alias de
+# branch de arriba es estable, pero este regex cubre tambien los deploys
+# individuales del proyecto en staging para que el qa-runner y los previews
+# efimeros no fallen por CORS.
+allow_origin_regex = (
+    r"https://businext-frontend-[a-z0-9-]+-daniflorezms-projects\.vercel\.app"
+)
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=origins,
+    allow_origin_regex=allow_origin_regex,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
