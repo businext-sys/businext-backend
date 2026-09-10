@@ -1,5 +1,7 @@
 # businext-backend
 
+<!-- staging: retrigger deploy 2026-09-10 -->
+
 API de Businext: FastAPI + SQLModel sobre Postgres (Supabase), con
 autenticacion por JWT de Supabase.
 
@@ -73,7 +75,8 @@ GMAIL_BUSINEXT_PASSWORD=
 
 ### CORS
 
-`src/main.py` permite solo `http://localhost:3000` y el dominio de produccion.
+`src/main.py` permite `http://localhost:3000`, el dominio de produccion y los
+previews de staging en Vercel (ver la lista `origins` y `allow_origin_regex`).
 Si sirves la web en otro puerto, hay que anadirlo a la lista `origins`.
 
 ## Migraciones
@@ -114,8 +117,8 @@ base, y commitearlo.
 
 ### De donde sale la URL
 
-`alembic.ini` esta commiteado y **el repo es publico**, asi que no contiene
-ninguna credencial. `alembic/env.py` resuelve la URL en tiempo de ejecucion:
+`alembic.ini` esta commiteado; **no contiene ninguna credencial**.
+`alembic/env.py` resuelve la URL en tiempo de ejecucion:
 
 1. `DATABASE_MIGRATION_URI`, si esta definida (permite migrar con un rol mas
    privilegiado que el de la app en runtime).
@@ -174,7 +177,8 @@ Variables que lee el entrypoint: `PORT` (default 8000), `UVICORN_WORKERS`
 (default 1, no lo subas — ver la nota del `lifespan`), `RUN_MIGRATIONS`
 (default 1) y `DATABASE_MIGRATION_URI`.
 
-Despliegue actual: Render, en <https://businext-backend.onrender.com>.
+Despliegue actual: Render, en <https://businext-backend.onrender.com>
+(produccion) y <https://businext-backend-staging.onrender.com> (staging).
 
 ## Generacion de tipos para el frontend
 
