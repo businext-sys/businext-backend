@@ -1,0 +1,38 @@
+# Tras un push a `staging`, Render redespliega el backend automaticamente.
+# Este workflow espera a que el deploy de staging este healthy y entonces
+# dispara la suite del qa-runner via repository_dispatch (staging-deployed).
+#
+# Requiere el secret QA_DISPATCH_TOKEN: un PAT (fine-grained o classic) con
+# permiso para disparar repository_dispatch en businext-sys/businext-qa-runner
+# (fine-grained: Contents Read/Write sobre ese repo; classic: scope `repo`).
+name: Trigger QA on staging deploy
+
+on:
+  push:
+    branches: [staging]
+
+jobs:
+  trigger-qa:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Wait for staging backend health
+        run: |
+          URL="https://businext-backend-staging.onrender.com/health"
+          echo "Esperando deploy de Render + $URL ..."
+          # Damos margen a que Render arranque el build tras el push.
+          sleep 45
+          for i in $(seq 1 40); do
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 20 "$URL" || echo 000)
+            if [ "$code" = "200" ]; then echo "backend healthy"; exit 0; fi
+            echo "intento $i: HTTP $code, reintentando en 10s"; sleep 10
+          done
+          echo "El backend de staging no quedo healthy a tiempo"; exit 1
+
+      - name: Dispatch qa-runner
+        run: |
+          curl -sf -X POST \
+            -H "Accept: application/vnd.github+json" \
+            -H "Authorization: Bearer ${{ secrets.QA_DISPATCH_TOKEN }}" \
+            https://api.github.com/repos/businext-sys/businext-qa-runner/dispatches \
+            -d '{"event_type":"staging-deployed","client_payload":{"source":"backend","sha":"${{ github.sha }}","ref":"${{ github.ref_name }}"}}'
+          echo "repository_dispatch enviado (source=backend)"
