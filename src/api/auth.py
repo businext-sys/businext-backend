@@ -13,6 +13,38 @@ from src.database.models.subscription_model import Subscription
 load_dotenv()
 
 SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+
+# Verificacion de JWT de Supabase.
+#
+# Supabase esta migrando de un unico secreto simetrico (HS256) a JWT Signing
+# Keys asimetricas (ES256/RS256), servidas via JWKS. Proyectos nuevos (p. ej.
+# staging) firman ya con ES256; proyectos antiguos (produccion) siguen en
+# HS256. Para soportar ambos sin bifurcar el codigo:
+#
+#  - Si el token viene firmado HS256, se valida con SUPABASE_JWT_SECRET.
+#  - Si viene con un algoritmo asimetrico (ES256/RS256), se valida contra el
+#    JWKS publico del proyecto (SUPABASE_URL/auth/v1/.well-known/jwks.json),
+#    resolviendo la clave por el 'kid' del header.
+#
+# El JWKS se cachea en el PyJWKClient (lifespan del proceso), con refresco
+# automatico cuando aparece un kid desconocido (rotacion de claves).
+
+_jwks_client = None
+
+
+def _get_jwks_client():
+    """PyJWKClient perezoso apuntando al JWKS del proyecto de Supabase."""
+    global _jwks_client
+    if _jwks_client is None:
+        if not SUPABASE_URL:
+            raise HTTPException(
+                status_code=500,
+                detail="SUPABASE_URL no configurada; no se puede validar el JWT asimetrico",
+            )
+        jwks_url = SUPABASE_URL.rstrip("/") + "/auth/v1/.well-known/jwks.json"
+        _jwks_client = jwt.PyJWKClient(jwks_url)
+    return _jwks_client
 
 # ---------------------------------------------------------------------------
 # Permission matrix
@@ -63,6 +95,40 @@ class AuthContext:
 # Internal helpers
 # ---------------------------------------------------------------------------
 
+def _decode_token(token: str) -> dict:
+    """Valida el JWT segun su algoritmo: HS256 con secreto, o ES256/RS256 via JWKS."""
+    try:
+        header = jwt.get_unverified_header(token)
+    except InvalidTokenError:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    alg = header.get("alg", "")
+
+    if alg == "HS256":
+        if not SUPABASE_JWT_SECRET:
+            raise HTTPException(
+                status_code=500,
+                detail="SUPABASE_JWT_SECRET no configurada",
+            )
+        return jwt.decode(
+            token,
+            SUPABASE_JWT_SECRET,
+            algorithms=["HS256"],
+            options={"verify_aud": False},
+        )
+
+    if alg in ("ES256", "RS256"):
+        signing_key = _get_jwks_client().get_signing_key_from_jwt(token)
+        return jwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["ES256", "RS256"],
+            options={"verify_aud": False},
+        )
+
+    raise HTTPException(status_code=401, detail="Unsupported token algorithm")
+
+
 def _get_user_id_from_token(authorization: str) -> str:
     parts = authorization.split(" ", 1)
     if len(parts) != 2 or parts[0].lower() != "bearer":
@@ -71,12 +137,7 @@ def _get_user_id_from_token(authorization: str) -> str:
         )
     token = parts[1]
     try:
-        payload = jwt.decode(
-            token,
-            SUPABASE_JWT_SECRET,
-            algorithms=["HS256"],
-            options={"verify_aud": False},
-        )
+        payload = _decode_token(token)
         user_id = payload.get("sub")
         if not user_id:
             raise HTTPException(status_code=401, detail="Token missing subject")
@@ -232,4 +293,3 @@ def require_manager_or_owner(auth: AuthContext = Depends(require_subscription)) 
             status_code=403, detail="Only managers and owners can perform this action"
         )
     return auth
-
