@@ -11,3 +11,7 @@ __pycache__/
 # Archivos de migraciones generados automáticamente
 alembic/versions/
 
+
+# APM dependencies
+apm_modules/
+.claude/

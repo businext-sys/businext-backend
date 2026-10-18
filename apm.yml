@@ -1,0 +1,10 @@
+name: businext-backend
+version: 1.0.0
+description: Dependencias APM de businext-backend (agentes, skills y reglas de Claude Code)
+author: businext-sys
+dependencies:
+  apm:
+    - businext-sys/businext-apm
+  mcp: []
+includes: auto
+scripts: {}

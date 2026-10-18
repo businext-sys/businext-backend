@@ -1,0 +1,399 @@
+lockfile_version: '1'
+apm_version: 0.32.0
+dependencies:
+- repo_url: businext-sys/businext-apm
+  name: businext-apm
+  host: github.com
+  resolved_commit: 83bbf1fbef262add040375e84c1c63aeb88c4a24
+  version: 0.1.0
+  package_type: apm_package
+  deployed_files:
+  - .claude/agents/businext-relations.md
+  - .claude/agents/deploy-access.md
+  - .claude/rules/board-story.md
+  - .claude/rules/implementation-style.md
+  - .claude/skills/businext-product-context
+  - .claude/skills/businext-product-context/SKILL.md
+  - .claude/skills/businext-relations-memory
+  - .claude/skills/businext-relations-memory/SKILL.md
+  - .claude/skills/businext-relations-memory/repo-metadata.yml
+  - .claude/skills/businext-relations-memory/stable/businext-backend.md
+  - .claude/skills/businext-relations-memory/stable/businext-qa-runner.md
+  - .claude/skills/businext-relations-memory/stable/businext-web-system.md
+  - .claude/skills/businext-relations-memory/stable/businext.md
+  - .claude/skills/businext-relations-memory/stable/integration-points.md
+  - .claude/skills/businext-relations-memory/volatile/README.md
+  - .claude/skills/contrib-retro
+  - .claude/skills/contrib-retro/SKILL.md
+  - .claude/skills/contrib-validate
+  - .claude/skills/contrib-validate/SKILL.md
+  - .claude/skills/contrib-verify-deploy
+  - .claude/skills/contrib-verify-deploy/SKILL.md
+  - .claude/skills/github-board
+  - .claude/skills/github-board/SKILL.md
+  - .claude/skills/implement
+  - .claude/skills/implement/SKILL.md
+  - .claude/skills/implement/references/pr.md
+  - .claude/skills/story
+  - .claude/skills/story-tracking
+  - .claude/skills/story-tracking/SKILL.md
+  - .claude/skills/story-tracking/references/eventos.md
+  - .claude/skills/story-tracking/references/seguimiento.md
+  - .claude/skills/story/SKILL.md
+  - .claude/skills/test-evidence
+  - .claude/skills/test-evidence/SKILL.md
+  - .claude/skills/verify
+  - .claude/skills/verify/SKILL.md
+  deployed_file_hashes:
+    .claude/agents/businext-relations.md: sha256:880d8e13095c85bb03745f71f86a87b58489073d4433180d4ae95f2345161f1a
+    .claude/agents/deploy-access.md: sha256:54f586001dd20d64231140f6e8375257f181c9e76a5819295701c5f11004658c
+    .claude/rules/board-story.md: sha256:588a5a3cf344cd22b8ee80abef8d5d9690d295751140f437fa3b42d51ec8c817
+    .claude/rules/implementation-style.md: sha256:223261c9a94e2c07aa02b0916bdb1ec909d86bb3f3dd933146eaebb9eb54e0fb
+    .claude/skills/businext-product-context/SKILL.md: sha256:3105c81548702186dd2f39a5feff6cf1d0e63712ee832f1480674aed6b8790af
+    .claude/skills/businext-relations-memory/SKILL.md: sha256:5351f28a47e3664e1c2f0cbdda3bb77b2a9a2a4354bf35129be226aebc5edd8d
+    .claude/skills/businext-relations-memory/repo-metadata.yml: sha256:4f9f38ce5ce8d87309e70a6f6d7c13f4abe4d721de10475a2f7caaa27df9255c
+    .claude/skills/businext-relations-memory/stable/businext-backend.md: sha256:70bb164fb4322988f423610de82cedc8bf3d8e29be0d50205285c9dad03503ac
+    .claude/skills/businext-relations-memory/stable/businext-qa-runner.md: sha256:4b518e36b612201ca3cdb7ad783af4c7bd28669c444ce64e59b7b746a0995b58
+    .claude/skills/businext-relations-memory/stable/businext-web-system.md: sha256:b7b5b08ee40f8b8d09d321a2384def9319f600df84e8a21c25bbe0d8bc2664e5
+    .claude/skills/businext-relations-memory/stable/businext.md: sha256:ceebe3c0c228bab614acc2819e045c7433cf2d998dcc8c913a2630c689e119a1
+    .claude/skills/businext-relations-memory/stable/integration-points.md: sha256:9dea24cfd3056475c2bc59f2f6f373b8eb0cc2a88d63a817cc567d583fdfa568
+    .claude/skills/businext-relations-memory/volatile/README.md: sha256:8e30f440d981208c9612d189eebf04eac7b522c2ac22821968354b822c1a2135
+    .claude/skills/contrib-retro/SKILL.md: sha256:e567160df46ebb81eb7ed8ba93d6bf101391cc318b7d48293de6c66396686990
+    .claude/skills/contrib-validate/SKILL.md: sha256:25a33590e4307e67300244d08a803316389608de9262cb3d0bbfd25413e50adc
+    .claude/skills/contrib-verify-deploy/SKILL.md: sha256:4cf9cdacf02722b0282e5d9ba463816cebdadd9d89e56aac01a81bfaa60329e8
+    .claude/skills/github-board/SKILL.md: sha256:7cd53e91c8b2bac1d482c1191aed41111f15361ebf5fdcf72412b51cf540ef3e
+    .claude/skills/implement/SKILL.md: sha256:ff3deb91bf9f89f8becbf8521010c2e157758686c9d6aa74e633ca9ad2680f4b
+    .claude/skills/implement/references/pr.md: sha256:e2c72079b514daee1ac1eae3d54aed9a446424a450e5620e678d05b06e749c1b
+    .claude/skills/story-tracking/SKILL.md: sha256:f44591e384ca31e2e846509d9998dd54d7cdbee3ee96b334e048970ac971f3f9
+    .claude/skills/story-tracking/references/eventos.md: sha256:aa53c48330ed48b2b707874e9c0af223b090805111722cd46e58c00bbbb672f8
+    .claude/skills/story-tracking/references/seguimiento.md: sha256:863557d08371214cb1abe52060df50d9855240179f4e2e5e84ca5837c9b07df9
+    .claude/skills/story/SKILL.md: sha256:7b2b766492103934f3fff2f33d9f985efdb26fd343a69a71356d0ad55e0959a3
+    .claude/skills/test-evidence/SKILL.md: sha256:84b05cec351f997ca03aaf25e779b10d61fd90aa14e170fe7f0b7ef1ee57a0b8
+    .claude/skills/verify/SKILL.md: sha256:850266902823c52e868a0dbd49f3b35d77e234655b755cbe882b06ae341b8df7
+  content_hash: sha256:399431f519315de00cefa62c8302a0c07be49315617929281c82099289006fe1
+  declared_license: UNLICENSED
+deployments:
+- kind: project-relative
+  target: claude
+  value: .claude/agents/businext-relations.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:880d8e13095c85bb03745f71f86a87b58489073d4433180d4ae95f2345161f1a
+- kind: project-relative
+  target: claude
+  value: .claude/agents/deploy-access.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:54f586001dd20d64231140f6e8375257f181c9e76a5819295701c5f11004658c
+- kind: project-relative
+  target: claude
+  value: .claude/rules/board-story.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:588a5a3cf344cd22b8ee80abef8d5d9690d295751140f437fa3b42d51ec8c817
+- kind: project-relative
+  target: claude
+  value: .claude/rules/implementation-style.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:223261c9a94e2c07aa02b0916bdb1ec909d86bb3f3dd933146eaebb9eb54e0fb
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-product-context
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-product-context/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:3105c81548702186dd2f39a5feff6cf1d0e63712ee832f1480674aed6b8790af
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:5351f28a47e3664e1c2f0cbdda3bb77b2a9a2a4354bf35129be226aebc5edd8d
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory/repo-metadata.yml
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:4f9f38ce5ce8d87309e70a6f6d7c13f4abe4d721de10475a2f7caaa27df9255c
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory/stable/businext-backend.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:70bb164fb4322988f423610de82cedc8bf3d8e29be0d50205285c9dad03503ac
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory/stable/businext-qa-runner.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:4b518e36b612201ca3cdb7ad783af4c7bd28669c444ce64e59b7b746a0995b58
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory/stable/businext-web-system.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:b7b5b08ee40f8b8d09d321a2384def9319f600df84e8a21c25bbe0d8bc2664e5
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory/stable/businext.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:ceebe3c0c228bab614acc2819e045c7433cf2d998dcc8c913a2630c689e119a1
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory/stable/integration-points.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:9dea24cfd3056475c2bc59f2f6f373b8eb0cc2a88d63a817cc567d583fdfa568
+- kind: project-relative
+  target: claude
+  value: .claude/skills/businext-relations-memory/volatile/README.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:8e30f440d981208c9612d189eebf04eac7b522c2ac22821968354b822c1a2135
+- kind: project-relative
+  target: claude
+  value: .claude/skills/contrib-retro
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/contrib-retro/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:e567160df46ebb81eb7ed8ba93d6bf101391cc318b7d48293de6c66396686990
+- kind: project-relative
+  target: claude
+  value: .claude/skills/contrib-validate
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/contrib-validate/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:25a33590e4307e67300244d08a803316389608de9262cb3d0bbfd25413e50adc
+- kind: project-relative
+  target: claude
+  value: .claude/skills/contrib-verify-deploy
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/contrib-verify-deploy/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:4cf9cdacf02722b0282e5d9ba463816cebdadd9d89e56aac01a81bfaa60329e8
+- kind: project-relative
+  target: claude
+  value: .claude/skills/github-board
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/github-board/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:7cd53e91c8b2bac1d482c1191aed41111f15361ebf5fdcf72412b51cf540ef3e
+- kind: project-relative
+  target: claude
+  value: .claude/skills/implement
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/implement/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:ff3deb91bf9f89f8becbf8521010c2e157758686c9d6aa74e633ca9ad2680f4b
+- kind: project-relative
+  target: claude
+  value: .claude/skills/implement/references/pr.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:e2c72079b514daee1ac1eae3d54aed9a446424a450e5620e678d05b06e749c1b
+- kind: project-relative
+  target: claude
+  value: .claude/skills/story
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/story-tracking
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/story-tracking/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:f44591e384ca31e2e846509d9998dd54d7cdbee3ee96b334e048970ac971f3f9
+- kind: project-relative
+  target: claude
+  value: .claude/skills/story-tracking/references/eventos.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:aa53c48330ed48b2b707874e9c0af223b090805111722cd46e58c00bbbb672f8
+- kind: project-relative
+  target: claude
+  value: .claude/skills/story-tracking/references/seguimiento.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:863557d08371214cb1abe52060df50d9855240179f4e2e5e84ca5837c9b07df9
+- kind: project-relative
+  target: claude
+  value: .claude/skills/story/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:7b2b766492103934f3fff2f33d9f985efdb26fd343a69a71356d0ad55e0959a3
+- kind: project-relative
+  target: claude
+  value: .claude/skills/test-evidence
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/test-evidence/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:84b05cec351f997ca03aaf25e779b10d61fd90aa14e170fe7f0b7ef1ee57a0b8
+- kind: project-relative
+  target: claude
+  value: .claude/skills/verify
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: null
+- kind: project-relative
+  target: claude
+  value: .claude/skills/verify/SKILL.md
+  runtime: null
+  scope: project
+  owners:
+  - businext-sys/businext-apm
+  active_owner: businext-sys/businext-apm
+  content_hash: sha256:850266902823c52e868a0dbd49f3b35d77e234655b755cbe882b06ae341b8df7
