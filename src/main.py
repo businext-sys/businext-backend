@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import (
+    assistant,
     auth_context,
     booking_request,
     configuration,
@@ -64,3 +65,4 @@ app.include_router(public_booking.router)
 app.include_router(booking_request.router)
 app.include_router(location.router)
 app.include_router(push_token.router)
+app.include_router(assistant.router)
