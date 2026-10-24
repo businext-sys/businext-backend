@@ -1,7 +1,7 @@
 name: Post-deploy smoke
 
 # Comprueba el backend desplegado en Render: que responde y que los endpoints
-# del asistente existen (401 sin token). Lanzarlo tras un merge, cuando Render
+# del asistente y del agente de voz existen (401 sin token o firma de Retell). Lanzarlo tras un merge, cuando Render
 # haya desplegado (businext-sys/businext#110).
 
 on:
@@ -27,7 +27,7 @@ jobs:
           echo "::error::$BASE_URL/health no responde"
           exit 1
 
-      - name: Endpoints del asistente sin token
+      - name: Endpoints del asistente y del agente de voz sin token o firma
         run: |
           fail=0
           check() {
@@ -39,4 +39,7 @@ jobs:
           check POST /assistant/actions/smoke/confirm '{"conversation_id":"x","decision":"cancel"}' 401
           check GET /assistant/conversations "" 401
           check GET /assistant/usage "" 401
+          check GET /voice-agent/config "" 401
+          check POST /retell/inbound '{"event":"call_inbound"}' 401
+          check POST /retell/functions/get_services '{"call":{}}' 401
           exit $fail

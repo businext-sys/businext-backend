@@ -69,6 +69,8 @@ RESEND_API_KEY=                      # emails transaccionales
 RESEND_FROM_EMAIL=noreply@businext.app
 GMAIL_BUSINEXT_USER=                 # src/services/employee_service.py
 GMAIL_BUSINEXT_PASSWORD=
+RETELL_API_KEY=                      # agente de voz: la API key «webhook» de Retell
+RETELL_AGENT_ID=                     # agente de voz: el agente plantilla
 ```
 
 ### CORS
@@ -259,11 +261,48 @@ employee solo ve y gestiona sus reservas (las de su `Profile.display_name`).
 | caja, resumen semanal, resenas | ✅ | ✅ | ❌ |
 | registrar ingreso o gasto | ✅ | ✅ | ❌ |
 
+## Agente de voz (Retell)
+
+Un unico agente plantilla de Retell atiende las llamadas de todas las
+barberias (businext-sys/businext#117, decision en
+[ADR 0002](docs/adr/0002-agente-de-voz-retell.md)). Codigo en
+`src/routers/voice_agent.py`:
+
+- `POST /retell/inbound` — webhook de llamada entrante: resuelve el numero
+  marcado a su negocio (`voicephonenumber`) y devuelve sus datos como
+  variables dinamicas, o rechaza la llamada si el numero no es de ningun
+  negocio o su agente esta desactivado.
+- `POST /retell/functions/{name}` — funciones del agente sobre la reserva
+  publica: `get_business_info`, `get_services`, `check_availability` y
+  `book_appointment`. El negocio sale de la variable `business_id` de la
+  llamada, nunca del modelo. Los errores de negocio responden 200 con
+  `ok: false` y el motivo.
+- `GET`/`PATCH /voice-agent/config` — `{ enabled, booking_mode, phone_numbers }`,
+  solo owner. `booking_mode`: `request` (solicitud, por defecto) o `confirm`
+  (reserva directa en la agenda).
+
+Todo `/retell/*` exige `X-Retell-Signature` firmada con `RETELL_API_KEY`
+(401 si falta o no cuadra). **Las tablas se crean a mano** con
+[`docs/sql/117-voice-agent.sql`](docs/sql/117-voice-agent.sql).
+
+Puesta en marcha:
+
+1. `python scripts/retell/sync.py agent --base-url https://businext-backend.onrender.com --voice-id <voz>`
+   crea el agente desde `scripts/retell/agent_template.json`; su `agent_id` va
+   en `RETELL_AGENT_ID` en Render. Con `RETELL_AGENT_ID` definida, el mismo
+   comando actualiza prompt y herramientas.
+2. `python scripts/retell/sync.py bind-number +34... --base-url ...` conecta
+   el numero al webhook (sin agente fijo).
+3. Insertar el numero en `voicephonenumber` con su `business_id` y activar el
+   agente desde `PATCH /voice-agent/config`.
+
 ## Decisiones de arquitectura
 
 En [`docs/adr/`](docs/adr/). La primera,
 [0001 — asistente conversacional](docs/adr/0001-asistente-llm.md): proveedor
 LLM (OpenAI `gpt-4o-mini`), orquestacion y contrato del chat de la app movil.
+[0002 — agente de voz Retell](docs/adr/0002-agente-de-voz-retell.md):
+numero → negocio, firma y modos de reserva.
 
 ## Generacion de tipos para el frontend
 
