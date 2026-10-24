@@ -1,5 +1,6 @@
 """Adaptador del LLM del asistente (ADR 0001: OpenAI gpt-4o-mini)."""
 
+import logging
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass, field
@@ -9,6 +10,8 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 load_dotenv()
+
+logger = logging.getLogger(__name__)
 
 MODEL = "gpt-4o-mini"
 # Precios del ADR 0001 (USD por token); revisar en https://openai.com/api/pricing
@@ -78,6 +81,13 @@ class OpenAIAssistantLLM:
 
 
 def get_assistant_llm() -> AssistantLLM | None:
+    if os.getenv("ASSISTANT_LLM_MODE") == "mock":
+        if os.getenv("RENDER"):
+            logger.error("ASSISTANT_LLM_MODE=mock ignorado: no se permite en Render (produccion)")
+        else:
+            from .mock_llm import MockAssistantLLM
+
+            return MockAssistantLLM()
     api_key = os.getenv("OPENAI_API_KEY", "")
     if not api_key:
         return None

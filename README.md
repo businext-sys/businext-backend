@@ -219,6 +219,14 @@ registrados, se crea una conversacion del asistente con la solicitud y su
 tarjeta, y la push lleva su `conversationId` (businext-sys/businext#100); sin
 las tablas del historial, la push sale como antes.
 
+**E2E del chat** (flows Maestro de `businext/apps/mobile/.maestro/`): con
+`ASSISTANT_LLM_MODE=mock` el asistente usa `MockAssistantLLM`
+(`src/services/assistant/mock_llm.py`), que responde de forma determinista a
+«reservas de hoy», «cancela…», «solicitudes» y «caja» llamando a las
+herramientas reales. En Render se ignora (variable `RENDER`). Datos de prueba:
+`python -m src.services.assistant.e2e_seed --business-id <id del owner>`
+(borra y recrea solo los datos «E2E» de ese negocio; solo en bases de prueba).
+
 Limites y observabilidad: 30 mensajes por usuario y hora y 300 por negocio y
 dia (`src/services/assistant/limits.py`, en memoria; al superarlos el chat
 responde con un mensaje, no con un error), 30 s por llamada a OpenAI y 60 s
