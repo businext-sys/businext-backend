@@ -8,14 +8,15 @@ from typing import Literal
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException
-from fastapi.responses import StreamingResponse
+from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from src.api.auth import AuthContext, require_subscription
 from src.database.database import SessionDep
 from src.services.assistant.llm import AssistantLLM, get_assistant_llm
 from src.services.assistant.orchestrator import run_turn
-from src.services.assistant import actions
+from src.services.assistant import actions, history
+from src.services.assistant.history import HistoryUnavailable
 from src.services.assistant.tools import TOOLS, ToolContext
 
 from . import assistant_actions, assistant_tools  # noqa: F401  (registran las herramientas en TOOLS)
@@ -37,9 +38,32 @@ def require_authorization_header(authorization: str | None = Header(default=None
         raise HTTPException(status_code=401, detail="Missing authorization header")
 
 
-def _sse(events: Iterator[dict]) -> Iterator[str]:
+def _sse(events: Iterator[dict], session) -> Iterator[str]:
+    # El stream sigue despues de que FastAPI cierre la dependencia de sesion.
+    try:
+        for event in events:
+            yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+    finally:
+        session.close()
+
+
+def _recorded(events: Iterator[dict], session, conversation) -> Iterator[dict]:
+    """Deja pasar los eventos y guarda la respuesta del asistente al terminar."""
+    blocks: list[dict] = []
     for event in events:
-        yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
+        if event["type"] == "text_delta":
+            if blocks and blocks[-1]["type"] == "text":
+                blocks[-1]["text"] += event["delta"]
+            else:
+                blocks.append({"type": "text", "text": event["delta"]})
+        elif event["type"] == "block":
+            blocks.append(event["block"])
+        elif event["type"] == "message_end" and conversation is not None and blocks:
+            try:
+                history.save_message(session, conversation, "assistant", blocks, event["message_id"])
+            except HistoryUnavailable:
+                pass
+        yield event
 
 
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
@@ -56,16 +80,28 @@ def chat(
     if llm is None:
         raise HTTPException(status_code=503, detail="Assistant is not configured")
 
-    conversation_id = body.conversation_id or str(uuid.uuid4())
+    try:
+        conversation = history.open_conversation(session, auth, body.conversation_id, body.message)
+        past = history.llm_history(session, conversation)
+        history.save_message(session, conversation, "user", [{"type": "text", "text": body.message}])
+        conversation_id = conversation.id
+    except HistoryUnavailable:
+        conversation, past = None, []
+        conversation_id = body.conversation_id or str(uuid.uuid4())
+
     events = run_turn(
         llm=llm,
         ctx=_context(auth, session, conversation_id),
         tools=TOOLS,
         conversation_id=conversation_id,
-        history=[],
+        history=past,
         user_message=body.message,
     )
-    return StreamingResponse(_sse(events), media_type="text/event-stream", headers=SSE_HEADERS)
+    return StreamingResponse(
+        _sse(_recorded(events, session, conversation), session),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
+    )
 
 
 class ConfirmActionRequest(BaseModel):
@@ -102,8 +138,55 @@ def confirm_action(
     auth: AuthContext = Depends(require_subscription),
 ):
     """Ejecuta (o descarta) una accion propuesta por el asistente. Responde en SSE."""
+    try:
+        conversation = history.find_conversation(session, auth, body.conversation_id)
+    except HistoryUnavailable:
+        conversation = None
     events = _confirm_events(action_id, body, _context(auth, session, body.conversation_id))
-    return StreamingResponse(_sse(events), media_type="text/event-stream", headers=SSE_HEADERS)
+    return StreamingResponse(
+        _sse(_recorded(events, session, conversation), session),
+        media_type="text/event-stream",
+        headers=SSE_HEADERS,
+    )
+
+
+HISTORY_UNAVAILABLE = HTTPException(status_code=503, detail="El historial de conversaciones no está disponible")
+
+
+@router.get("/conversations")
+def list_conversations(session: SessionDep, auth: AuthContext = Depends(require_subscription)):
+    """Conversaciones del usuario, la mas reciente primero (`ConversationSummary` de shared-core)."""
+    try:
+        return history.list_conversations(session, auth)
+    except HistoryUnavailable:
+        raise HISTORY_UNAVAILABLE
+
+
+@router.get("/conversations/{conversation_id}")
+def get_conversation(
+    conversation_id: str, session: SessionDep, auth: AuthContext = Depends(require_subscription)
+):
+    """Una conversacion con sus mensajes y bloques (`Conversation` de shared-core)."""
+    try:
+        conversation = history.get_conversation(session, auth, conversation_id)
+    except HistoryUnavailable:
+        raise HISTORY_UNAVAILABLE
+    if conversation is None:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    return conversation
+
+
+@router.delete("/conversations/{conversation_id}", status_code=204)
+def delete_conversation(
+    conversation_id: str, session: SessionDep, auth: AuthContext = Depends(require_subscription)
+):
+    try:
+        deleted = history.delete_conversation(session, auth, conversation_id)
+    except HistoryUnavailable:
+        raise HISTORY_UNAVAILABLE
+    if not deleted:
+        raise HTTPException(status_code=404, detail="Conversación no encontrada")
+    return Response(status_code=204)
 
 
 def _context(auth: AuthContext, session, conversation_id: str) -> ToolContext:
