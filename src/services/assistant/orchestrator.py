@@ -2,8 +2,10 @@
 
 import json
 import logging
+import time
 import uuid
 from collections.abc import Iterator
+from dataclasses import dataclass, field
 
 from .llm import AssistantLLM
 from .tools import Tool, ToolContext
@@ -11,11 +13,28 @@ from .tools import Tool, ToolContext
 logger = logging.getLogger(__name__)
 
 MAX_STEPS = 5
+TURN_TIMEOUT_SECONDS = 60
 
 WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
 
 LLM_ERROR_MESSAGE = "El asistente no está disponible ahora mismo. Inténtalo de nuevo en un momento."
 MAX_STEPS_MESSAGE = "No he podido terminar esta consulta. ¿Puedes reformularla?"
+TIMEOUT_MESSAGE = "La consulta está tardando demasiado. Prueba otra vez o pregúntalo de forma más concreta."
+
+
+@dataclass
+class TurnStats:
+    """Lo que se registra de cada turno (sin el contenido de los mensajes)."""
+
+    tools: list[str] = field(default_factory=list)
+    denied_tools: list[str] = field(default_factory=list)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    error: str | None = None
+
+
+class TurnTimeout(Exception):
+    pass
 
 
 def system_prompt(ctx: ToolContext) -> str:
@@ -55,7 +74,11 @@ def run_turn(
     conversation_id: str,
     history: list[dict],
     user_message: str,
+    stats: TurnStats | None = None,
+    timeout_seconds: float = TURN_TIMEOUT_SECONDS,
 ) -> Iterator[dict]:
+    stats = stats if stats is not None else TurnStats()
+    deadline = time.monotonic() + timeout_seconds
     message_id = str(uuid.uuid4())
     yield {"type": "message_start", "conversation_id": conversation_id, "message_id": message_id}
 
@@ -68,9 +91,15 @@ def run_turn(
 
     try:
         for _ in range(MAX_STEPS):
+            if time.monotonic() > deadline:
+                raise TurnTimeout
             calls: dict[int, dict] = {}
             text = ""
             for delta in llm.stream(messages, specs):
+                if time.monotonic() > deadline:
+                    raise TurnTimeout
+                stats.prompt_tokens += delta.prompt_tokens
+                stats.completion_tokens += delta.completion_tokens
                 if delta.text:
                     text += delta.text
                     yield {"type": "text_delta", "message_id": message_id, "delta": delta.text}
@@ -98,7 +127,10 @@ def run_turn(
             for call in calls.values():
                 tool = tools.get(call["name"])
                 if tool and ctx.auth.role in tool.roles:
+                    stats.tools.append(call["name"])
                     yield {"type": "tool_status", "message_id": message_id, "label": tool.status_label}
+                else:
+                    stats.denied_tools.append(call["name"])
                 data, blocks = _run_tool(tool, call["name"], call["arguments"], ctx)
                 for block in blocks:
                     yield {"type": "block", "message_id": message_id, "block": block}
@@ -110,8 +142,12 @@ def run_turn(
             yield {"type": "tool_status", "message_id": message_id, "label": None}
         else:
             yield {"type": "text_delta", "message_id": message_id, "delta": MAX_STEPS_MESSAGE}
-    except Exception:
+    except TurnTimeout:
+        stats.error = "timeout"
+        yield {"type": "text_delta", "message_id": message_id, "delta": TIMEOUT_MESSAGE}
+    except Exception as error:
         logger.exception("assistant LLM call failed")
+        stats.error = type(error).__name__
         yield {"type": "error", "code": "llm_error", "message": LLM_ERROR_MESSAGE}
         return
 
