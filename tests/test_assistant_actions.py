@@ -199,21 +199,20 @@ class TestConfirmar:
         created = session.exec(select(Reservation).where(Reservation.customer_name == "Luis")).one()
         assert created.in_charge == "Dani"
 
+        created_id = created.id
         action_id = propose(
-            session, "reschedule_reservation", {"id": created.id, "new_start": f"{tomorrow}T13:00"}
+            session, "reschedule_reservation", {"id": created_id, "new_start": f"{tomorrow}T13:00"}
         ).blocks[0]["action_id"]
         assert confirm(client, action_id).startswith("Hecho")
-        session.refresh(created)
-        assert created.reservation_start_date.hour == 13
+        assert session.get(Reservation, created_id).reservation_start_date.hour == 13
 
     def test_aceptar_solicitud_crea_la_reserva(self, client, session):
-        request = session.exec(select(BookingRequest)).one()
+        request_id = session.exec(select(BookingRequest)).one().id
         action_id = propose(
-            session, "answer_booking_request", {"id": request.id, "decision": "accept"}
+            session, "answer_booking_request", {"id": request_id, "decision": "accept"}
         ).blocks[0]["action_id"]
         assert confirm(client, action_id).startswith("Hecho")
-        session.refresh(request)
-        assert request.status == "ACCEPTED"
+        assert session.get(BookingRequest, request_id).status == "ACCEPTED"
         assert session.exec(select(Reservation).where(Reservation.customer_name == "Sara")).one()
 
     def test_registrar_gasto(self, client, session):
