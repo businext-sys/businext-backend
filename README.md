@@ -188,6 +188,12 @@ y, opcionalmente, un bloque para la app) y `orchestrator.py` (bucle de un
 turno, maximo `MAX_STEPS` llamadas al modelo). Sin `OPENAI_API_KEY` responde
 503. Los tests mockean el LLM sobreescribiendo `get_assistant_llm`.
 
+## Decisiones de arquitectura
+
+En [`docs/adr/`](docs/adr/). La primera,
+[0001 — asistente conversacional](docs/adr/0001-asistente-llm.md): proveedor
+LLM (OpenAI `gpt-4o-mini`), orquestacion y contrato del chat de la app movil.
+
 ## Generacion de tipos para el frontend
 
 `packages/shared-core` del monorepo genera sus tipos desde el OpenAPI que
