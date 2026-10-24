@@ -188,6 +188,12 @@ y, opcionalmente, un bloque para la app) y `orchestrator.py` (bucle de un
 turno, maximo `MAX_STEPS` llamadas al modelo). Sin `OPENAI_API_KEY` responde
 503. Los tests mockean el LLM sobreescribiendo `get_assistant_llm`.
 
+Herramientas de lectura en `src/routers/assistant_tools.py`: reservas de un
+dia o rango, detalle de reserva, caja (hoy/semana/mes con el periodo
+anterior), solicitudes, servicios y precios, resenas, resumen semanal y
+horario. Llaman a las mismas funciones que los endpoints, asi que aplican sus
+reglas de acceso. «Hoy» se calcula en `Europe/Madrid`.
+
 ## Decisiones de arquitectura
 
 En [`docs/adr/`](docs/adr/). La primera,

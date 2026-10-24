@@ -3,7 +3,8 @@
 import json
 import uuid
 from collections.abc import Iterator
-from datetime import date
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
@@ -15,7 +16,12 @@ from src.services.assistant.llm import AssistantLLM, get_assistant_llm
 from src.services.assistant.orchestrator import run_turn
 from src.services.assistant.tools import TOOLS, ToolContext
 
+from . import assistant_tools  # noqa: F401  (registra las herramientas en TOOLS)
+
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+
+# No hay zona horaria por negocio; todos operan en Espana (importes en EUR).
+BUSINESS_TIMEZONE = ZoneInfo("Europe/Madrid")
 
 
 class ChatRequest(BaseModel):
@@ -50,11 +56,10 @@ def chat(
 
     events = run_turn(
         llm=llm,
-        ctx=ToolContext(auth=auth, session=session),
+        ctx=ToolContext(auth=auth, session=session, today=datetime.now(BUSINESS_TIMEZONE).date()),
         tools=TOOLS,
         conversation_id=body.conversation_id or str(uuid.uuid4()),
         history=[],
         user_message=body.message,
-        today=date.today(),
     )
     return StreamingResponse(_sse(events), media_type="text/event-stream", headers=SSE_HEADERS)

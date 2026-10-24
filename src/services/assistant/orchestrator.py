@@ -4,7 +4,6 @@ import json
 import logging
 import uuid
 from collections.abc import Iterator
-from datetime import date
 
 from .llm import AssistantLLM
 from .tools import Tool, ToolContext
@@ -13,15 +12,17 @@ logger = logging.getLogger(__name__)
 
 MAX_STEPS = 5
 
+WEEKDAYS = ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]
+
 LLM_ERROR_MESSAGE = "El asistente no está disponible ahora mismo. Inténtalo de nuevo en un momento."
 MAX_STEPS_MESSAGE = "No he podido terminar esta consulta. ¿Puedes reformularla?"
 
 
-def system_prompt(ctx: ToolContext, today: date) -> str:
+def system_prompt(ctx: ToolContext) -> str:
     return (
         "Eres el asistente de Businext, la app de gestión de un negocio local de servicios "
         "(barbería, peluquería...). Hablas en español, de tú, con frases cortas y claras. "
-        f"Hoy es {today.isoformat()}. El usuario tiene el rol «{ctx.auth.role}» en el negocio. "
+        f"Hoy es {ctx.today.isoformat()} ({WEEKDAYS[ctx.today.weekday()]}). El usuario tiene el rol «{ctx.auth.role}» en el negocio. "
         "Usa siempre las herramientas para obtener datos del negocio: nunca inventes reservas, "
         "importes ni nombres. Si no tienes una herramienta para lo que te piden, dilo. "
         "Cuando una herramienta devuelve una tarjeta, no repitas su contenido entero: resúmelo "
@@ -31,14 +32,14 @@ def system_prompt(ctx: ToolContext, today: date) -> str:
 
 def _run_tool(tool: Tool | None, name: str, raw_args: str, ctx: ToolContext):
     if tool is None:
-        return {"error": f"Herramienta desconocida: {name}"}, None
+        return {"error": f"Herramienta desconocida: {name}"}, []
     try:
         args = json.loads(raw_args or "{}")
         result = tool.handler(ctx, args)
-        return result.data, result.block
+        return result.data, result.blocks
     except Exception:
         logger.exception("assistant tool %s failed", name)
-        return {"error": "La herramienta ha fallado."}, None
+        return {"error": "La herramienta ha fallado."}, []
 
 
 def run_turn(
@@ -48,13 +49,12 @@ def run_turn(
     conversation_id: str,
     history: list[dict],
     user_message: str,
-    today: date,
 ) -> Iterator[dict]:
     message_id = str(uuid.uuid4())
     yield {"type": "message_start", "conversation_id": conversation_id, "message_id": message_id}
 
     messages = [
-        {"role": "system", "content": system_prompt(ctx, today)},
+        {"role": "system", "content": system_prompt(ctx)},
         *history,
         {"role": "user", "content": user_message},
     ]
@@ -93,8 +93,8 @@ def run_turn(
                 tool = tools.get(call["name"])
                 if tool:
                     yield {"type": "tool_status", "message_id": message_id, "label": tool.status_label}
-                data, block = _run_tool(tool, call["name"], call["arguments"], ctx)
-                if block:
+                data, blocks = _run_tool(tool, call["name"], call["arguments"], ctx)
+                for block in blocks:
                     yield {"type": "block", "message_id": message_id, "block": block}
                 messages.append({
                     "role": "tool",

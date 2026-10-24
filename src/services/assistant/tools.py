@@ -1,7 +1,8 @@
 """Registro de herramientas del asistente (ADR 0001)."""
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 from sqlmodel import Session
@@ -13,12 +14,13 @@ from src.api.auth import AuthContext
 class ToolContext:
     auth: AuthContext
     session: Session
+    today: date
 
 
 @dataclass
 class ToolResult:
     data: Any
-    block: dict | None = None
+    blocks: list[dict] = field(default_factory=list)
 
 
 @dataclass
