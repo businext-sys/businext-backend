@@ -194,6 +194,16 @@ anterior), solicitudes, servicios y precios, resenas, resumen semanal y
 horario. Llaman a las mismas funciones que los endpoints, asi que aplican sus
 reglas de acceso. «Hoy» se calcula en `Europe/Madrid`.
 
+Herramientas de escritura en `src/routers/assistant_actions.py` (crear,
+mover, cancelar, completar y revertir reservas; aceptar o rechazar
+solicitudes; registrar ingresos o gastos). No escriben: guardan una accion
+pendiente (`src/services/assistant/actions.py`, en memoria, caduca a los 15
+min) y devuelven un bloque `confirmation`. Solo
+`POST /assistant/actions/{action_id}/confirm` con `decision: "confirm"` la
+ejecuta, una vez, llamando a la funcion del endpoint correspondiente; el
+resultado o el error de negocio vuelve en SSE. Un reinicio del proceso
+invalida las acciones pendientes.
+
 ## Decisiones de arquitectura
 
 En [`docs/adr/`](docs/adr/). La primera,
