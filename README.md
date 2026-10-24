@@ -104,7 +104,7 @@ En la practica:
   antes de que uvicorn llegue a arrancar.
 - Cualquier tabla nueva hay que crearla a mano en Supabase. Casos conocidos:
   `push_token` (issue #031 del monorepo) y las del historial del asistente
-  (`docs/sql/024-assistant-conversations.sql`).
+  (`docs/sql/024-assistant-conversations.sql`, `docs/sql/025-assistant-usage.sql`).
 - `alembic/env.py` si tiene `target_metadata = SQLModel.metadata`, asi que la
   autogeneracion funcionaria; lo que falta es versionar el resultado.
 
@@ -213,6 +213,16 @@ al reanudar se envian al modelo los ultimos 20 mensajes. Endpoints:
 [`docs/sql/024-assistant-conversations.sql`](docs/sql/024-assistant-conversations.sql)
 (ver [Migraciones](#migraciones)); mientras no existan, el chat funciona sin
 historial y esos endpoints responden 503.
+
+Limites y observabilidad: 30 mensajes por usuario y hora y 300 por negocio y
+dia (`src/services/assistant/limits.py`, en memoria; al superarlos el chat
+responde con un mensaje, no con un error), 30 s por llamada a OpenAI y 60 s
+por turno. Cada turno deja un log `assistant_turn` en JSON (herramientas,
+latencia, tokens, coste y error; nunca el texto de los mensajes) y suma su
+uso en `assistantusage`, que el owner consulta en `GET /assistant/usage?days=30`.
+**La tabla se crea a mano** con
+[`docs/sql/025-assistant-usage.sql`](docs/sql/025-assistant-usage.sql); sin
+ella, el uso solo queda en los logs.
 
 Permisos por rol (`Tool.roles`): el modelo solo recibe las herramientas del
 rol del usuario y el orquestador lo vuelve a comprobar al ejecutar. Un
