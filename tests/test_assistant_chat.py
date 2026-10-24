@@ -135,7 +135,7 @@ def test_herramienta_emite_estado_bloque_y_devuelve_el_resultado_al_modelo(
 
     def handler(ctx, args):
         seen_args.update(args)
-        return ToolResult(data={"count": 0}, block=block)
+        return ToolResult(data={"count": 0}, blocks=[block])
 
     tool = Tool(
         name="get_reservations",
