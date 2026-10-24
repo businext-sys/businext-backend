@@ -11,7 +11,7 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException
 
-from src.services.assistant.tools import Tool, ToolContext, ToolResult, register
+from src.services.assistant.tools import MANAGEMENT_ROLES, Tool, ToolContext, ToolResult, own_name, register
 
 from . import booking_request, finances, google_reviews, intelligence, product, reservation, working_hours
 
@@ -53,10 +53,19 @@ def _reservation_item(r) -> dict:
     }
 
 
+def _matches_employee(in_charge: str | None, employee: str, exact: bool) -> bool:
+    name = (in_charge or "").lower()
+    return name == employee if exact else employee in name
+
+
 def _get_reservations(ctx: ToolContext, args: dict) -> ToolResult:
     start = _parse_date(args.get("date"), ctx.today)
     end = _parse_date(args.get("end_date"), start)
     employee = (args.get("employee") or "").strip().lower()
+    if ctx.auth.role == "employee":
+        employee = (own_name(ctx) or "").lower()
+        if not employee:
+            return ToolResult(data={"error": "Tu perfil no tiene nombre: no puedo saber cuáles son tus reservas."})
 
     all_reservations = _or_empty(lambda: reservation.get_reservations(ctx.session, ctx.auth), [])
     selected = sorted(
@@ -64,7 +73,7 @@ def _get_reservations(ctx: ToolContext, args: dict) -> ToolResult:
             r
             for r in all_reservations
             if start <= r.reservation_start_date.date() <= end
-            and (not employee or employee in (r.in_charge or "").lower())
+            and (not employee or _matches_employee(r.in_charge, employee, exact=ctx.auth.role == "employee"))
         ),
         key=lambda r: r.reservation_start_date,
     )
@@ -80,7 +89,9 @@ def _get_reservation(ctx: ToolContext, args: dict) -> ToolResult:
     found = _or_empty(
         lambda: reservation.get_reservation_by_id(int(args["id"]), ctx.session, ctx.auth), None
     )
-    if found is None:
+    if found is None or (
+        ctx.auth.role == "employee" and (found.in_charge or "").lower() != (own_name(ctx) or "").lower()
+    ):
         return ToolResult(data={"error": "No existe esa reserva."})
     item = _reservation_item(found)
     return ToolResult(
@@ -255,6 +266,7 @@ register(Tool(
     },
     status_label="Consultando la caja…",
     handler=_get_cash_summary,
+    roles=MANAGEMENT_ROLES,
 ))
 
 register(Tool(
@@ -290,6 +302,7 @@ register(Tool(
     },
     status_label="Consultando reseñas…",
     handler=_get_reviews,
+    roles=MANAGEMENT_ROLES,
 ))
 
 register(Tool(
@@ -298,6 +311,7 @@ register(Tool(
     parameters={"type": "object", "properties": {}},
     status_label="Consultando el resumen semanal…",
     handler=_get_weekly_summary,
+    roles=MANAGEMENT_ROLES,
 ))
 
 register(Tool(

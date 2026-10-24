@@ -139,10 +139,8 @@ class TestProponer:
         result = propose(session, "register_cash_movement", {"type": "expense", "amount": -5, "concept": "x"})
         assert "error" in result.data
 
-    def test_solo_el_owner_puede_revertir(self, session):
-        employee = auth(role="employee", user_id="emp-1")
-        result = propose(session, "revert_reservation", {"id": 1}, ctx_auth=employee)
-        assert "dueño" in result.data["error"]
+    def test_solo_el_owner_puede_revertir(self):
+        assert TOOLS["revert_reservation"].roles == {"owner"}
 
 
 class TestConfirmar:

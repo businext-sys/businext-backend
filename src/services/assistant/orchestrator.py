@@ -24,7 +24,9 @@ def system_prompt(ctx: ToolContext) -> str:
         "(barbería, peluquería...). Hablas en español, de tú, con frases cortas y claras. "
         f"Hoy es {ctx.today.isoformat()} ({WEEKDAYS[ctx.today.weekday()]}). El usuario tiene el rol «{ctx.auth.role}» en el negocio. "
         "Usa siempre las herramientas para obtener datos del negocio: nunca inventes reservas, "
-        "importes ni nombres. Si no tienes una herramienta para lo que te piden, dilo. "
+        "importes ni nombres. Solo tienes las herramientas que permite su rol: si te piden algo "
+        "para lo que no tienes herramienta (por ejemplo la caja, siendo employee), explica que su "
+        "rol no tiene acceso a eso, sin dar ningún dato. "
         "Cuando una herramienta devuelve una tarjeta, no repitas su contenido entero: resúmelo "
         "en una frase. Las herramientas que cambian datos solo preparan la acción: di al usuario "
         "que la confirme en la tarjeta y nunca afirmes que ya está hecha."
@@ -34,6 +36,9 @@ def system_prompt(ctx: ToolContext) -> str:
 def _run_tool(tool: Tool | None, name: str, raw_args: str, ctx: ToolContext):
     if tool is None:
         return {"error": f"Herramienta desconocida: {name}"}, []
+    if ctx.auth.role not in tool.roles:
+        logger.warning("assistant tool %s denied for role %s", name, ctx.auth.role)
+        return {"error": f"El rol «{ctx.auth.role}» no tiene permiso para esto."}, []
     try:
         args = json.loads(raw_args or "{}")
         result = tool.handler(ctx, args)
@@ -59,7 +64,7 @@ def run_turn(
         *history,
         {"role": "user", "content": user_message},
     ]
-    specs = [tool.spec() for tool in tools.values()]
+    specs = [tool.spec() for tool in tools.values() if ctx.auth.role in tool.roles]
 
     try:
         for _ in range(MAX_STEPS):
@@ -92,7 +97,7 @@ def run_turn(
             })
             for call in calls.values():
                 tool = tools.get(call["name"])
-                if tool:
+                if tool and ctx.auth.role in tool.roles:
                     yield {"type": "tool_status", "message_id": message_id, "label": tool.status_label}
                 data, blocks = _run_tool(tool, call["name"], call["arguments"], ctx)
                 for block in blocks:
