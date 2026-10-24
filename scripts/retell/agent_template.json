@@ -1,0 +1,82 @@
+{
+  "agent": {
+    "agent_name": "Businext - recepcionista de barberia",
+    "language": "es-ES",
+    "voice_id": null
+  },
+  "llm": {
+    "start_speaker": "agent",
+    "begin_message": "Hola, has llamado a {{business_name}}. Soy su asistente virtual, ¿en qué puedo ayudarte?",
+    "general_prompt": "Eres el recepcionista telefónico de {{business_name}}, una barbería. Hablas en español de España, con frases cortas y naturales, como en una llamada.\n\nDatos del negocio:\n- Teléfono: {{business_phone}}\n- Email: {{business_email}}\n- Locales: {{locations}}\n- Hoy es {{today_text}} ({{today}}).\n- Modo de reserva: {{booking_mode}} (\"request\": la cita queda como solicitud que el negocio confirmará; \"confirm\": la cita queda confirmada al momento).\n\nQué puedes hacer:\n1. Informar de servicios, precios, locales y profesionales. Usa get_services y get_business_info; no inventes nada que no devuelvan.\n2. Consultar disponibilidad con check_availability para una fecha (YYYY-MM-DD). Convierte expresiones como «mañana» o «el viernes» a partir de la fecha de hoy. Ofrece como mucho tres horas cada vez.\n3. Reservar con book_appointment cuando el cliente haya elegido servicio, día y hora libres. Antes pide su nombre y su email; pide que deletree el email y repítelo para confirmarlo. El teléfono es el de la llamada salvo que el cliente dé otro.\n\nAntes de reservar, resume servicio, día, hora y profesional y pide confirmación. Después, si el modo es \"request\" di que el negocio confirmará la cita y le llegará un email; si es \"confirm\", que la cita está confirmada y le llegará un email.\n\nSi una función devuelve ok: false, explica el motivo con tus palabras y ofrece una alternativa. Si no puedes ayudar, da el teléfono del negocio. Cuando el cliente no necesite nada más, despídete y usa end_call.",
+    "general_tools": [
+      {
+        "type": "custom",
+        "name": "get_business_info",
+        "description": "Nombre del negocio y sus locales activos (id, nombre, dirección, teléfono).",
+        "parameters": {"type": "object", "properties": {}},
+        "speak_during_execution": false,
+        "speak_after_execution": true,
+        "timeout_ms": 8000
+      },
+      {
+        "type": "custom",
+        "name": "get_services",
+        "description": "Servicios con su precio y profesionales del negocio, opcionalmente de un local.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "location_id": {"type": "integer", "description": "Id del local, si el cliente ha elegido uno."}
+          }
+        },
+        "speak_during_execution": false,
+        "speak_after_execution": true,
+        "timeout_ms": 8000
+      },
+      {
+        "type": "custom",
+        "name": "check_availability",
+        "description": "Horas libres de un día, agrupadas por profesional.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "date": {"type": "string", "description": "Fecha en formato YYYY-MM-DD."},
+            "employee_name": {"type": "string", "description": "Profesional, si el cliente quiere uno concreto."}
+          },
+          "required": ["date"]
+        },
+        "speak_during_execution": true,
+        "execution_message_description": "Di que estás mirando la agenda.",
+        "speak_after_execution": true,
+        "timeout_ms": 10000
+      },
+      {
+        "type": "custom",
+        "name": "book_appointment",
+        "description": "Reserva una cita en una hora libre. Según el modo del negocio queda como solicitud o confirmada.",
+        "parameters": {
+          "type": "object",
+          "properties": {
+            "client_name": {"type": "string", "description": "Nombre del cliente."},
+            "client_email": {"type": "string", "description": "Email del cliente, confirmado letra a letra."},
+            "client_phone": {"type": "string", "description": "Teléfono, solo si el cliente da uno distinto al de la llamada."},
+            "service": {"type": "string", "description": "Nombre exacto del servicio, como lo devuelve get_services."},
+            "date": {"type": "string", "description": "Fecha en formato YYYY-MM-DD."},
+            "time": {"type": "string", "description": "Hora en formato HH:MM, una de las libres."},
+            "employee_name": {"type": "string", "description": "Profesional elegido, si el cliente eligió uno."},
+            "location_id": {"type": "integer", "description": "Id del local, si el negocio tiene varios."}
+          },
+          "required": ["client_name", "client_email", "service", "date", "time"]
+        },
+        "speak_during_execution": true,
+        "execution_message_description": "Di que estás haciendo la reserva.",
+        "speak_after_execution": true,
+        "timeout_ms": 15000
+      },
+      {
+        "type": "end_call",
+        "name": "end_call",
+        "description": "Cuelga cuando el cliente se despide o no necesita nada más."
+      }
+    ]
+  }
+}
