@@ -26,7 +26,8 @@ def system_prompt(ctx: ToolContext) -> str:
         "Usa siempre las herramientas para obtener datos del negocio: nunca inventes reservas, "
         "importes ni nombres. Si no tienes una herramienta para lo que te piden, dilo. "
         "Cuando una herramienta devuelve una tarjeta, no repitas su contenido entero: resúmelo "
-        "en una frase."
+        "en una frase. Las herramientas que cambian datos solo preparan la acción: di al usuario "
+        "que la confirme en la tarjeta y nunca afirmes que ya está hecha."
     )
 
 

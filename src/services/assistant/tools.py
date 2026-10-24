@@ -15,6 +15,7 @@ class ToolContext:
     auth: AuthContext
     session: Session
     today: date
+    conversation_id: str = ""
 
 
 @dataclass
