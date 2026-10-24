@@ -1,6 +1,8 @@
 """Asistente conversacional de la app movil (Fase 7, ADR 0001)."""
 
 import json
+import logging
+import time
 import uuid
 from collections.abc import Iterator
 from datetime import datetime
@@ -11,17 +13,19 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import Response, StreamingResponse
 from pydantic import BaseModel, Field
 
-from src.api.auth import AuthContext, require_subscription
+from src.api.auth import AuthContext, require_owner, require_subscription
 from src.database.database import SessionDep
-from src.services.assistant.llm import AssistantLLM, get_assistant_llm
-from src.services.assistant.orchestrator import run_turn
-from src.services.assistant import actions, history
+from src.services.assistant import actions, history, limits, usage
 from src.services.assistant.history import HistoryUnavailable
+from src.services.assistant.llm import AssistantLLM, cost_usd, get_assistant_llm
+from src.services.assistant.orchestrator import TurnStats, run_turn
+from src.services.assistant.usage import UsageUnavailable
 from src.services.assistant.tools import TOOLS, ToolContext
 
 from . import assistant_actions, assistant_tools  # noqa: F401  (registran las herramientas en TOOLS)
 
 router = APIRouter(prefix="/assistant", tags=["assistant"])
+logger = logging.getLogger(__name__)
 
 # No hay zona horaria por negocio; todos operan en Espana (importes en EUR).
 BUSINESS_TIMEZONE = ZoneInfo("Europe/Madrid")
@@ -69,6 +73,48 @@ def _recorded(events: Iterator[dict], session, conversation) -> Iterator[dict]:
 SSE_HEADERS = {"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
 
 
+def _observed(
+    events: Iterator[dict], session, auth: AuthContext, conversation_id: str, stats: TurnStats
+) -> Iterator[dict]:
+    """Al terminar el turno, registra un log estructurado y el uso del dia."""
+    started = time.monotonic()
+    try:
+        yield from events
+    finally:
+        cost = cost_usd(stats.prompt_tokens, stats.completion_tokens)
+        logger.info(
+            "assistant_turn %s",
+            json.dumps({
+                "business_id": auth.business_id,
+                "user_id": auth.user_id,
+                "role": auth.role,
+                "conversation_id": conversation_id,
+                "tools": stats.tools,
+                "denied_tools": stats.denied_tools,
+                "latency_ms": round((time.monotonic() - started) * 1000),
+                "prompt_tokens": stats.prompt_tokens,
+                "completion_tokens": stats.completion_tokens,
+                "cost_usd": round(cost, 6),
+                "error": stats.error,
+            }),
+        )
+        usage.record(
+            session,
+            auth.business_id,
+            datetime.now(BUSINESS_TIMEZONE).date(),
+            stats.prompt_tokens,
+            stats.completion_tokens,
+            cost,
+        )
+
+
+def _limit_reached(conversation_id: str) -> Iterator[dict]:
+    message_id = str(uuid.uuid4())
+    yield {"type": "message_start", "conversation_id": conversation_id, "message_id": message_id}
+    yield {"type": "text_delta", "message_id": message_id, "delta": limits.LIMIT_MESSAGE}
+    yield {"type": "message_end", "message_id": message_id}
+
+
 @router.post("/chat", dependencies=[Depends(require_authorization_header)])
 def chat(
     body: ChatRequest,
@@ -79,6 +125,10 @@ def chat(
     """Un turno del chat, respondido en streaming SSE (eventos del contrato de shared-core)."""
     if llm is None:
         raise HTTPException(status_code=503, detail="Assistant is not configured")
+    if not limits.allow_message(auth.business_id, auth.user_id):
+        logger.info("assistant_rate_limited %s", json.dumps({"business_id": auth.business_id, "user_id": auth.user_id}))
+        events = _limit_reached(body.conversation_id or str(uuid.uuid4()))
+        return StreamingResponse(_sse(events, session), media_type="text/event-stream", headers=SSE_HEADERS)
 
     try:
         conversation = history.open_conversation(session, auth, body.conversation_id, body.message)
@@ -89,6 +139,7 @@ def chat(
         conversation, past = None, []
         conversation_id = body.conversation_id or str(uuid.uuid4())
 
+    stats = TurnStats()
     events = run_turn(
         llm=llm,
         ctx=_context(auth, session, conversation_id),
@@ -96,9 +147,10 @@ def chat(
         conversation_id=conversation_id,
         history=past,
         user_message=body.message,
+        stats=stats,
     )
     return StreamingResponse(
-        _sse(_recorded(events, session, conversation), session),
+        _sse(_observed(_recorded(events, session, conversation), session, auth, conversation_id, stats), session),
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
@@ -148,6 +200,15 @@ def confirm_action(
         media_type="text/event-stream",
         headers=SSE_HEADERS,
     )
+
+
+@router.get("/usage")
+def get_usage(session: SessionDep, auth: AuthContext = Depends(require_owner), days: int = 30):
+    """Coste diario del asistente para el negocio (solo owner), el dia mas reciente primero."""
+    try:
+        return usage.daily(session, auth.business_id, datetime.now(BUSINESS_TIMEZONE).date(), min(max(days, 1), 365))
+    except UsageUnavailable:
+        raise HTTPException(status_code=503, detail="El registro de uso no está disponible")
 
 
 HISTORY_UNAVAILABLE = HTTPException(status_code=503, detail="El historial de conversaciones no está disponible")

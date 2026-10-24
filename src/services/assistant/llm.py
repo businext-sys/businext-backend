@@ -11,6 +11,10 @@ from openai import OpenAI
 load_dotenv()
 
 MODEL = "gpt-4o-mini"
+# Precios del ADR 0001 (USD por token); revisar en https://openai.com/api/pricing
+INPUT_PRICE_PER_TOKEN = 0.15 / 1_000_000
+OUTPUT_PRICE_PER_TOKEN = 0.60 / 1_000_000
+REQUEST_TIMEOUT_SECONDS = 30
 
 
 @dataclass
@@ -25,6 +29,12 @@ class ToolCallDelta:
 class LLMDelta:
     text: str | None = None
     tool_calls: list[ToolCallDelta] = field(default_factory=list)
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+
+
+def cost_usd(prompt_tokens: int, completion_tokens: int) -> float:
+    return prompt_tokens * INPUT_PRICE_PER_TOKEN + completion_tokens * OUTPUT_PRICE_PER_TOKEN
 
 
 class AssistantLLM(Protocol):
@@ -41,9 +51,15 @@ class OpenAIAssistantLLM:
             messages=messages,
             tools=tools or None,
             stream=True,
+            stream_options={"include_usage": True},
             temperature=0.3,
         )
         for chunk in response:
+            if chunk.usage:
+                yield LLMDelta(
+                    prompt_tokens=chunk.usage.prompt_tokens,
+                    completion_tokens=chunk.usage.completion_tokens,
+                )
             if not chunk.choices:
                 continue
             delta = chunk.choices[0].delta
@@ -63,4 +79,6 @@ class OpenAIAssistantLLM:
 
 def get_assistant_llm() -> AssistantLLM | None:
     api_key = os.getenv("OPENAI_API_KEY", "")
-    return OpenAIAssistantLLM(OpenAI(api_key=api_key)) if api_key else None
+    if not api_key:
+        return None
+    return OpenAIAssistantLLM(OpenAI(api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS, max_retries=1))
