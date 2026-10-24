@@ -204,6 +204,19 @@ ejecuta, una vez, llamando a la funcion del endpoint correspondiente; el
 resultado o el error de negocio vuelve en SSE. Un reinicio del proceso
 invalida las acciones pendientes.
 
+Permisos por rol (`Tool.roles`): el modelo solo recibe las herramientas del
+rol del usuario y el orquestador lo vuelve a comprobar al ejecutar. Un
+employee solo ve y gestiona sus reservas (las de su `Profile.display_name`).
+
+| Herramienta | owner | manager | employee |
+|---|---|---|---|
+| reservas: consultar, crear, mover, cancelar, completar | ✅ | ✅ | solo las suyas |
+| revertir reserva completada | ✅ | ❌ | ❌ |
+| solicitudes: consultar, aceptar, rechazar | ✅ | ✅ | ✅ |
+| servicios y precios, horario | ✅ | ✅ | ✅ |
+| caja, resumen semanal, resenas | ✅ | ✅ | ❌ |
+| registrar ingreso o gasto | ✅ | ✅ | ❌ |
+
 ## Decisiones de arquitectura
 
 En [`docs/adr/`](docs/adr/). La primera,
