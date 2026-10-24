@@ -1,0 +1,55 @@
+name: Assistant evals
+
+# Evals del asistente contra OpenAI (businext-backend#26). Necesita el secret
+# OPENAI_API_KEY; sin el, el job lo avisa y termina sin fallar.
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main]
+    paths:
+      - "src/services/assistant/**"
+      - "src/routers/assistant*.py"
+      - "evals/**"
+
+jobs:
+  evals:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      DATABASE_URI: sqlite://
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar OPENAI_API_KEY
+        id: key
+        run: |
+          if [ -z "$OPENAI_API_KEY" ]; then
+            echo "::warning::Falta el secret OPENAI_API_KEY: no se ejecutan los evals."
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Set up Python
+        if: steps.key.outputs.present == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install dependencies
+        if: steps.key.outputs.present == 'true'
+        run: pip install -r requirements.txt
+
+      - name: Run evals
+        if: steps.key.outputs.present == 'true'
+        run: python -m evals.run --report evals/report.json
+
+      - name: Subir informe
+        if: always() && steps.key.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: assistant-evals-report
+          path: evals/report.json

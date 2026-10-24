@@ -227,6 +227,14 @@ herramientas reales. En Render se ignora (variable `RENDER`). Datos de prueba:
 `python -m src.services.assistant.e2e_seed --business-id <id del owner>`
 (borra y recrea solo los datos «E2E» de ese negocio; solo en bases de prueba).
 
+**Evals** (`evals/`): 56 casos en espanol (`evals/cases.json`) con la
+herramienta y los parametros esperados por rol. `python -m evals.run` los
+ejecuta contra OpenAI con herramientas simuladas (sin base de datos) y
+mide herramienta, parametros, permisos y que ninguna escritura se de por
+hecha sin confirmar; falla por debajo del 80 % de precision o con cualquier
+violacion. En CI: `.github/workflows/assistant-evals.yml` (necesita el secret
+`OPENAI_API_KEY`).
+
 Limites y observabilidad: 30 mensajes por usuario y hora y 300 por negocio y
 dia (`src/services/assistant/limits.py`, en memoria; al superarlos el chat
 responde con un mensaje, no con un error), 30 s por llamada a OpenAI y 60 s

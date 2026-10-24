@@ -11,3 +11,4 @@ __pycache__/
 # Archivos de migraciones generados automáticamente
 alembic/versions/
 
+evals/report.json
