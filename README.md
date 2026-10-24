@@ -103,8 +103,9 @@ En la practica:
   `set -eu`, asi que el fallo de `alembic upgrade head` mata el contenedor
   antes de que uvicorn llegue a arrancar.
 - Cualquier tabla nueva hay que crearla a mano en Supabase. Casos conocidos:
-  `push_token` (issue #031 del monorepo) y las del historial del asistente
-  (`docs/sql/024-assistant-conversations.sql`, `docs/sql/025-assistant-usage.sql`).
+  `pushtoken` (issue #031 del monorepo, `docs/sql/031-push-token.sql`) y las
+  del historial del asistente (`docs/sql/024-assistant-conversations.sql`,
+  `docs/sql/025-assistant-usage.sql`).
 - `alembic/env.py` si tiene `target_metadata = SQLModel.metadata`, asi que la
   autogeneracion funcionaria; lo que falta es versionar el resultado.
 
