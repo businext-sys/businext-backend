@@ -16,10 +16,17 @@ from sqlmodel import select
 from src.database.models.booking_request_model import BookingRequest
 from src.database.models.finances_model import FinancesBase
 from src.database.models.product_model import Product
-from src.database.models.profile_model import Profile
 from src.database.models.reservation_model import ReservationBase, ReservationUpdate
 from src.services.assistant import actions
-from src.services.assistant.tools import Tool, ToolContext, ToolResult, register
+from src.services.assistant.tools import (
+    MANAGEMENT_ROLES,
+    OWNER_ONLY,
+    Tool,
+    ToolContext,
+    ToolResult,
+    own_name,
+    register,
+)
 
 from . import booking_request, finances, reservation
 
@@ -56,9 +63,12 @@ def _error(message: str) -> ToolResult:
 
 def _find_reservation(ctx: ToolContext, reservation_id) -> object | None:
     try:
-        return reservation.get_reservation_by_id(int(reservation_id), ctx.session, ctx.auth)
+        found = reservation.get_reservation_by_id(int(reservation_id), ctx.session, ctx.auth)
     except HTTPException:
         return None
+    if ctx.auth.role == "employee" and (found.in_charge or "").lower() != (own_name(ctx) or "").lower():
+        return None
+    return found
 
 
 def _conflict(ctx: ToolContext, start: datetime, in_charge: str, exclude_id: int | None = None) -> str | None:
@@ -80,8 +90,7 @@ def _conflict(ctx: ToolContext, start: datetime, in_charge: str, exclude_id: int
 
 
 def _creator_name(ctx: ToolContext) -> str:
-    profile = ctx.session.get(Profile, ctx.auth.user_id)
-    return profile.display_name if profile and profile.display_name else "Owner"
+    return own_name(ctx) or "Owner"
 
 
 # ---------------------------------------------------------------------------
@@ -91,6 +100,8 @@ def _creator_name(ctx: ToolContext) -> str:
 def _create_reservation(ctx: ToolContext, args: dict) -> ToolResult:
     start = datetime.fromisoformat(args["start"])
     in_charge = args.get("in_charge") or _creator_name(ctx)
+    if ctx.auth.role == "employee":
+        in_charge = _creator_name(ctx)
     customer, service = args["customer_name"], args["service"]
     conflict = _conflict(ctx, start, in_charge)
     if conflict:
@@ -214,8 +225,6 @@ def _complete_reservation(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 def _revert_reservation(ctx: ToolContext, args: dict) -> ToolResult:
-    if ctx.auth.role != "owner":
-        return _error("Solo el dueño del negocio puede revertir una reserva completada.")
     found = _find_reservation(ctx, args["id"])
     if found is None:
         return _error("No existe esa reserva.")
@@ -347,6 +356,7 @@ register(Tool(
     parameters={"type": "object", "properties": {"id": ID_PARAM}, "required": ["id"]},
     status_label="Preparando la reserva…",
     handler=_revert_reservation,
+    roles=OWNER_ONLY,
 ))
 
 register(Tool(
@@ -379,4 +389,5 @@ register(Tool(
     },
     status_label="Preparando el movimiento…",
     handler=_register_cash_movement,
+    roles=MANAGEMENT_ROLES,
 ))
