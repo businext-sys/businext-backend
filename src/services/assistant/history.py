@@ -77,6 +77,29 @@ def open_conversation(
     return _guard(session, operation)
 
 
+def start_conversation(
+    session: Session, business_id: str, user_id: str, title: str, blocks: list[dict]
+) -> AssistantConversation:
+    """Conversacion nueva que empieza con un mensaje del asistente (p. ej. al llegar una push)."""
+
+    def operation():
+        conversation = AssistantConversation(
+            id=str(uuid.uuid4()), business_id=business_id, user_id=user_id, title=title[:TITLE_LENGTH]
+        )
+        session.add(conversation)
+        session.add(AssistantMessage(
+            id=str(uuid.uuid4()),
+            conversation_id=conversation.id,
+            role="assistant",
+            blocks=json.dumps(blocks, ensure_ascii=False),
+        ))
+        session.commit()
+        session.refresh(conversation)
+        return conversation
+
+    return _guard(session, operation)
+
+
 def llm_history(session: Session, conversation: AssistantConversation) -> list[dict]:
     """Los ultimos mensajes como contexto para el LLM; las tarjetas, resumidas."""
 

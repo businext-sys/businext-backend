@@ -214,6 +214,11 @@ al reanudar se envian al modelo los ultimos 20 mensajes. Endpoints:
 (ver [Migraciones](#migraciones)); mientras no existan, el chat funciona sin
 historial y esos endpoints responden 503.
 
+Al crear una solicitud de reserva publica, si el owner tiene dispositivos
+registrados, se crea una conversacion del asistente con la solicitud y su
+tarjeta, y la push lleva su `conversationId` (businext-sys/businext#100); sin
+las tablas del historial, la push sale como antes.
+
 Limites y observabilidad: 30 mensajes por usuario y hora y 300 por negocio y
 dia (`src/services/assistant/limits.py`, en memoria; al superarlos el chat
 responde con un mensaje, no con un error), 30 s por llamada a OpenAI y 60 s

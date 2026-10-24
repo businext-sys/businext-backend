@@ -25,6 +25,7 @@ from src.services.email_service import (
     email_request_received_employee,
     send_email,
 )
+from src.services.assistant import history
 from src.services.push_notification_service import send_push_notifications
 
 router = APIRouter(prefix="/public/book", tags=["public-booking"])
@@ -214,11 +215,15 @@ def create_booking_request(
         select(PushToken.token).where(PushToken.user_id == business_id)
     ).all()
     if owner_tokens:
+        data = {"type": "booking_request", "bookingRequestId": booking.id}
+        conversation_id = _start_booking_request_conversation(session, business_id, booking)
+        if conversation_id:
+            data["conversationId"] = conversation_id
         send_push_notifications(
             tokens=list(owner_tokens),
             title="Nueva solicitud de reserva",
             body=f"{booking.client_name} solicito {booking.service}",
-            data={"type": "booking_request", "bookingRequestId": booking.id},
+            data=data,
         )
 
     # Send confirmation email to client
@@ -257,3 +262,40 @@ def create_booking_request(
         "status": booking.status,
         "message": "Solicitud enviada correctamente. Recibirás un email de confirmación.",
     }
+
+
+def _start_booking_request_conversation(session: SessionDep, owner_id: str, booking: BookingRequest) -> str | None:
+    """
+    Conversacion del asistente que abre la push (businext-sys/businext#100):
+    un mensaje que explica la solicitud y su tarjeta con Aceptar/Rechazar.
+    """
+    when = booking.requested_date.strftime("el %d/%m a las %H:%M")
+    with_employee = f" con {booking.employee_name}" if booking.employee_name else ""
+    blocks = [
+        {
+            "type": "text",
+            "text": (
+                f"Tienes una nueva solicitud de reserva de **{booking.client_name}**: "
+                f"{booking.service}{with_employee}, {when}. ¿La aceptas?"
+            ),
+        },
+        {
+            "type": "booking_request",
+            "request": {
+                "id": booking.id,
+                "client_name": booking.client_name,
+                "service": booking.service,
+                "requested_date": booking.requested_date.isoformat(),
+                "employee_name": booking.employee_name,
+                "status": booking.status,
+            },
+        },
+    ]
+    try:
+        conversation = history.start_conversation(
+            session, owner_id, owner_id, f"Solicitud de {booking.client_name}", blocks
+        )
+    except history.HistoryUnavailable:
+        return None
+    return conversation.id
+
