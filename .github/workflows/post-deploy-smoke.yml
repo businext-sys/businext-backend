@@ -1,0 +1,42 @@
+name: Post-deploy smoke
+
+# Comprueba el backend desplegado en Render: que responde y que los endpoints
+# del asistente existen (401 sin token). Lanzarlo tras un merge, cuando Render
+# haya desplegado (businext-sys/businext#110).
+
+on:
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "URL del backend"
+        required: false
+        default: "https://businext-backend.onrender.com"
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ inputs.base_url || 'https://businext-backend.onrender.com' }}
+    steps:
+      - name: Esperar a que el servicio responda
+        run: |
+          for i in $(seq 1 20); do
+            if curl -fsS --max-time 30 "$BASE_URL/health"; then echo; exit 0; fi
+            sleep 15
+          done
+          echo "::error::$BASE_URL/health no responde"
+          exit 1
+
+      - name: Endpoints del asistente sin token
+        run: |
+          fail=0
+          check() {
+            code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 -X "$1" -H "Content-Type: application/json" ${3:+-d "$3"} "$BASE_URL$2")
+            echo "$1 $2 -> $code (esperado $4)"
+            [ "$code" = "$4" ] || fail=1
+          }
+          check POST /assistant/chat '{"message":"hola"}' 401
+          check POST /assistant/actions/smoke/confirm '{"conversation_id":"x","decision":"cancel"}' 401
+          check GET /assistant/conversations "" 401
+          check GET /assistant/usage "" 401
+          exit $fail

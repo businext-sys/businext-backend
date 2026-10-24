@@ -202,7 +202,7 @@ def confirm_action(
     )
 
 
-@router.get("/usage")
+@router.get("/usage", dependencies=[Depends(require_authorization_header)])
 def get_usage(session: SessionDep, auth: AuthContext = Depends(require_owner), days: int = 30):
     """Coste diario del asistente para el negocio (solo owner), el dia mas reciente primero."""
     try:
@@ -214,7 +214,7 @@ def get_usage(session: SessionDep, auth: AuthContext = Depends(require_owner), d
 HISTORY_UNAVAILABLE = HTTPException(status_code=503, detail="El historial de conversaciones no está disponible")
 
 
-@router.get("/conversations")
+@router.get("/conversations", dependencies=[Depends(require_authorization_header)])
 def list_conversations(session: SessionDep, auth: AuthContext = Depends(require_subscription)):
     """Conversaciones del usuario, la mas reciente primero (`ConversationSummary` de shared-core)."""
     try:
@@ -223,7 +223,7 @@ def list_conversations(session: SessionDep, auth: AuthContext = Depends(require_
         raise HISTORY_UNAVAILABLE
 
 
-@router.get("/conversations/{conversation_id}")
+@router.get("/conversations/{conversation_id}", dependencies=[Depends(require_authorization_header)])
 def get_conversation(
     conversation_id: str, session: SessionDep, auth: AuthContext = Depends(require_subscription)
 ):
@@ -237,7 +237,7 @@ def get_conversation(
     return conversation
 
 
-@router.delete("/conversations/{conversation_id}", status_code=204)
+@router.delete("/conversations/{conversation_id}", status_code=204, dependencies=[Depends(require_authorization_header)])
 def delete_conversation(
     conversation_id: str, session: SessionDep, auth: AuthContext = Depends(require_subscription)
 ):

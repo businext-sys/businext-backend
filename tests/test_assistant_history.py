@@ -169,3 +169,11 @@ def test_sin_tablas_el_chat_funciona_y_el_historial_da_503(llm):
         assert client.get("/assistant/conversations", headers=AUTH).status_code == 503
     finally:
         app.dependency_overrides.clear()
+
+
+def test_historial_y_uso_sin_cabecera_devuelven_401():
+    client = TestClient(app)
+    assert client.get("/assistant/conversations").status_code == 401
+    assert client.get("/assistant/conversations/x").status_code == 401
+    assert client.delete("/assistant/conversations/x").status_code == 401
+    assert client.get("/assistant/usage").status_code == 401
