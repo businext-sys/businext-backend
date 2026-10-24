@@ -102,8 +102,9 @@ En la practica:
 - **En Docker, arranca con `RUN_MIGRATIONS=0`.** El entrypoint corre con
   `set -eu`, asi que el fallo de `alembic upgrade head` mata el contenedor
   antes de que uvicorn llegue a arrancar.
-- Cualquier tabla nueva hay que crearla a mano en Supabase. Caso conocido:
-  `push_token` (issue #031 del monorepo).
+- Cualquier tabla nueva hay que crearla a mano en Supabase. Casos conocidos:
+  `push_token` (issue #031 del monorepo) y las del historial del asistente
+  (`docs/sql/024-assistant-conversations.sql`).
 - `alembic/env.py` si tiene `target_metadata = SQLModel.metadata`, asi que la
   autogeneracion funcionaria; lo que falta es versionar el resultado.
 
@@ -203,6 +204,15 @@ min) y devuelven un bloque `confirmation`. Solo
 ejecuta, una vez, llamando a la funcion del endpoint correspondiente; el
 resultado o el error de negocio vuelve en SSE. Un reinicio del proceso
 invalida las acciones pendientes.
+
+Historial (`src/services/assistant/history.py`): cada turno se guarda en
+`assistantconversation`/`assistantmessage`, aislado por negocio y usuario, y
+al reanudar se envian al modelo los ultimos 20 mensajes. Endpoints:
+`GET /assistant/conversations`, `GET` y `DELETE /assistant/conversations/{id}`.
+**Las tablas se crean a mano** con
+[`docs/sql/024-assistant-conversations.sql`](docs/sql/024-assistant-conversations.sql)
+(ver [Migraciones](#migraciones)); mientras no existan, el chat funciona sin
+historial y esos endpoints responden 503.
 
 Permisos por rol (`Tool.roles`): el modelo solo recibe las herramientas del
 rol del usuario y el orquestador lo vuelve a comprobar al ejecutar. Un
