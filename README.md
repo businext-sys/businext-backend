@@ -176,6 +176,18 @@ Variables que lee el entrypoint: `PORT` (default 8000), `UVICORN_WORKERS`
 
 Despliegue actual: Render, en <https://businext-backend.onrender.com>.
 
+## Asistente conversacional
+
+`POST /assistant/chat` (`src/routers/assistant.py`) recibe
+`{ conversation_id?, message }` y responde en SSE con los eventos del contrato
+de `businext/packages/shared-core` (`message_start`, `text_delta`,
+`tool_status`, `block`, `message_end`, `error`). La logica vive en
+`src/services/assistant/`: `llm.py` (OpenAI `gpt-4o-mini` en streaming),
+`tools.py` (registro de herramientas: cada una devuelve datos para el modelo
+y, opcionalmente, un bloque para la app) y `orchestrator.py` (bucle de un
+turno, maximo `MAX_STEPS` llamadas al modelo). Sin `OPENAI_API_KEY` responde
+503. Los tests mockean el LLM sobreescribiendo `get_assistant_llm`.
+
 ## Decisiones de arquitectura
 
 En [`docs/adr/`](docs/adr/). La primera,
