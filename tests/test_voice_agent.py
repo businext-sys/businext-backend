@@ -19,7 +19,7 @@ from src.database.models.member_model import BusinessMember
 from src.database.models.product_model import Product
 from src.database.models.profile_model import Profile
 from src.database.models.reservation_model import Reservation
-from src.database.models.voice_agent_model import VoiceAgentConfig, VoicePhoneNumber
+from src.database.models.voice_agent_model import VoiceAgentConfig, VoiceCall, VoicePhoneNumber
 from src.database.models.working_hours_model import WorkingHours
 from src.main import app
 from src.routers import public_booking, voice_agent
@@ -240,6 +240,111 @@ class TestConfig:
 
     def test_sin_cabecera_responde_401(self, client):
         assert client.get("/voice-agent/config").status_code == 401
+
+
+def call_event(client, event, **call):
+    payload = {"event": event, "call": {"call_id": "call_1", "from_number": "+34600000000", "to_number": NUMBER, **call}}
+    return signed_post(client, "/retell/webhook", payload)
+
+
+def the_call(session) -> VoiceCall:
+    session.expire_all()
+    return session.exec(select(VoiceCall).where(VoiceCall.call_id == "call_1")).one()
+
+
+class TestCallLog:
+    def test_la_entrada_crea_la_llamada(self, client, session):
+        inbound(client, NUMBER)
+        call = the_call(session)
+        assert (call.business_id, call.status, call.from_number) == (OWNER, "in_progress", "+34600000000")
+
+    def test_una_llamada_rechazada_queda_registrada(self, client, session):
+        config = session.exec(select(VoiceAgentConfig).where(VoiceAgentConfig.business_id == OWNER)).one()
+        config.enabled = False
+        session.commit()
+        inbound(client, NUMBER)
+        assert the_call(session).status == "rejected"
+
+    def test_un_numero_sin_negocio_no_se_registra(self, client, session):
+        inbound(client, "+34999999999")
+        assert session.exec(select(VoiceCall)).all() == []
+
+    def test_los_eventos_completan_la_llamada(self, client, session):
+        inbound(client, NUMBER)
+        assert call_event(client, "call_started", start_timestamp=1_760_000_000_000).status_code == 204
+        call_event(
+            client, "call_ended", start_timestamp=1_760_000_000_000, end_timestamp=1_760_000_095_000,
+            duration_ms=95_000, transcript="Agent: Hola", disconnection_reason="user_hangup",
+        )
+        call_event(
+            client, "call_analyzed",
+            call_analysis={"call_summary": "Pide cita", "user_sentiment": "Positive", "call_successful": True},
+        )
+        call = the_call(session)
+        assert (call.status, call.duration_seconds, call.transcript) == ("ended", 95, "Agent: Hola")
+        assert (call.summary, call.sentiment, call.successful) == ("Pide cita", "Positive", True)
+        assert call.started_at == datetime(2025, 10, 9, 8, 53, 20)
+
+    def test_la_reserva_queda_apuntada_en_la_llamada(self, client, session):
+        inbound(client, NUMBER)
+        data = function(client, "book_appointment", BOOKING).json()
+        call = the_call(session)
+        assert (call.booking_mode, call.booking_id) == ("request", data["request_id"])
+
+    def test_el_webhook_exige_firma(self, client):
+        assert client.post("/retell/webhook", json={"event": "call_ended", "call": {"call_id": "x"}}).status_code == 401
+
+
+class TestCallsApi:
+    AUTH = {"Authorization": "Bearer test"}
+
+    @pytest.fixture(autouse=True)
+    def calls(self, session):
+        now = datetime.utcnow()
+        session.add_all([
+            VoiceCall(call_id="a", business_id=OWNER, status="ended", started_at=now - timedelta(hours=2),
+                      duration_seconds=60, sentiment="Positive", booking_mode="request", booking_id=1,
+                      transcript="Agent: Hola"),
+            VoiceCall(call_id="b", business_id=OWNER, status="ended", started_at=now - timedelta(hours=1),
+                      duration_seconds=120, sentiment="Negative"),
+            VoiceCall(call_id="c", business_id=OWNER, status="rejected", started_at=now),
+            VoiceCall(call_id="old", business_id=OWNER, status="ended", started_at=now - timedelta(days=40),
+                      duration_seconds=30),
+            VoiceCall(call_id="z", business_id=OTHER, status="ended", started_at=now, duration_seconds=10),
+        ])
+        session.commit()
+        app.dependency_overrides[get_auth_context] = lambda: as_role("owner")
+
+    def test_lista_las_llamadas_del_negocio(self, client):
+        data = client.get("/voice-agent/calls?limit=2", headers=self.AUTH).json()
+        assert data["total"] == 4
+        assert [c["status"] for c in data["items"]] == ["rejected", "ended"]
+        assert "transcript" not in data["items"][0]
+
+    def test_filtros(self, client):
+        assert client.get("/voice-agent/calls?status=rejected", headers=self.AUTH).json()["total"] == 1
+        booked = client.get("/voice-agent/calls?booked=true", headers=self.AUTH).json()
+        assert [c["booking_id"] for c in booked["items"]] == [1]
+
+    def test_detalle_con_transcripcion_y_solo_del_negocio(self, client, session):
+        mine = session.exec(select(VoiceCall).where(VoiceCall.call_id == "a")).one()
+        other = session.exec(select(VoiceCall).where(VoiceCall.call_id == "z")).one()
+        assert client.get(f"/voice-agent/calls/{mine.id}", headers=self.AUTH).json()["transcript"] == "Agent: Hola"
+        assert client.get(f"/voice-agent/calls/{other.id}", headers=self.AUTH).status_code == 404
+
+    def test_kpis(self, client):
+        data = client.get("/voice-agent/stats?days=30", headers=self.AUTH).json()
+        assert (data["total_calls"], data["answered_calls"], data["rejected_calls"]) == (3, 2, 1)
+        assert (data["bookings"], data["booking_rate"]) == (1, 0.5)
+        assert (data["total_minutes"], data["avg_duration_seconds"]) == (3.0, 90)
+        assert (data["positive_calls"], data["negative_calls"]) == (1, 1)
+        assert len(data["daily"]) == 30
+        assert sum(d["calls"] for d in data["daily"]) == 2
+
+    @pytest.mark.parametrize("path", ["/voice-agent/calls", "/voice-agent/stats"])
+    def test_solo_owner(self, client, path):
+        app.dependency_overrides[get_auth_context] = lambda: as_role("manager")
+        assert client.get(path, headers=self.AUTH).status_code == 403
 
 
 def test_la_plantilla_del_agente_usa_las_funciones_del_backend():
