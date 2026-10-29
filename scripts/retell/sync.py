@@ -53,6 +53,8 @@ def sync_agent(base_url: str, voice_id: str | None) -> None:
     template = json.loads(TEMPLATE.read_text())
     llm = build_llm(template, base_url)
     agent = {k: v for k, v in template["agent"].items() if v is not None}
+    # Eventos de la llamada (inicio, fin, analisis) -> registro de llamadas.
+    agent["webhook_url"] = f"{base_url.rstrip('/')}/retell/webhook"
     if voice_id:
         agent["voice_id"] = voice_id
 
