@@ -1,0 +1,30 @@
+name: Trends ingest
+
+# Ingesta diaria del radar de tendencias (businext-sys/businext#164). Llama a
+# POST /internal/trends/ingest del backend en Render con el secret
+# TRENDS_JOB_SECRET. 04:00 UTC son las 05:00 en Madrid en invierno y las 06:00
+# en verano.
+
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: "URL del backend"
+        required: false
+        default: "https://businext-backend.onrender.com"
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ inputs.base_url || 'https://businext-backend.onrender.com' }}
+      TRENDS_JOB_SECRET: ${{ secrets.TRENDS_JOB_SECRET }}
+    steps:
+      - name: Lanzar la ingesta
+        run: |
+          curl -fsS --max-time 600 -X POST \
+            -H "Authorization: Bearer $TRENDS_JOB_SECRET" \
+            "$BASE_URL/internal/trends/ingest"
+          echo
