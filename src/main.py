@@ -18,6 +18,7 @@ from .routers import (
     public_booking,
     push_token,
     reservation,
+    trends,
     voice_agent,
     working_hours,
 )
@@ -67,5 +68,6 @@ app.include_router(booking_request.router)
 app.include_router(location.router)
 app.include_router(push_token.router)
 app.include_router(assistant.router)
+app.include_router(trends.router)
 app.include_router(voice_agent.router)
 app.include_router(voice_agent.retell_router)
