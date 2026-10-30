@@ -4,7 +4,7 @@ Tests de las herramientas de lectura del asistente (businext-backend#21).
 SQLite en memoria con datos de ejemplo; los handlers se llaman directamente.
 """
 import json
-from datetime import date, datetime
+from datetime import date, datetime, time
 
 import pytest
 from sqlalchemy.pool import StaticPool
@@ -20,10 +20,23 @@ from src.database.models.profile_model import Profile
 from src.database.models.reservation_model import Reservation
 from src.database.models.weekly_summary_model import WeeklySummary
 from src.database.models.working_hours_model import WorkingHours
+from src.routers import reservation as reservation_router
 from src.services.assistant.tools import TOOLS, ToolContext
 
 BIZ = "owner-1"
 TODAY = date(2026, 10, 22)  # miercoles
+
+
+class _FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.combine(TODAY, time(12, 0), tzinfo=tz)
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock(monkeypatch):
+    # get_reservations filtra con el reloj real (PENDING de los ultimos 7 dias) y los datos son de TODAY.
+    monkeypatch.setattr(reservation_router, "datetime", _FrozenDatetime)
 
 
 def auth(role: str = "owner", user_id: str = BIZ) -> AuthContext:

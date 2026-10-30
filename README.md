@@ -107,7 +107,11 @@ En la practica:
 - Cualquier tabla nueva hay que crearla a mano en Supabase. Casos conocidos:
   `pushtoken` (issue #031 del monorepo, `docs/sql/031-push-token.sql`) y las
   del historial del asistente (`docs/sql/024-assistant-conversations.sql`,
-  `docs/sql/025-assistant-usage.sql`).
+  `docs/sql/025-assistant-usage.sql`) y las del radar de tendencias
+  (`docs/sql/163-trends.sql`, aplicado con el MCP de Supabase).
+- Activa RLS en cada tabla nueva (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`,
+  sin politicas): el backend no lo necesita, pero sin RLS la API publica de
+  Supabase expone la tabla con la anon key.
 - `alembic/env.py` si tiene `target_metadata = SQLModel.metadata`, asi que la
   autogeneracion funcionaria; lo que falta es versionar el resultado.
 

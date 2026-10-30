@@ -31,6 +31,7 @@ SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 # | reservations read    |  ✅   |   ✅    |    ✅    |
 # | reservations write   |  ✅   |   ✅    |    ✅    |
 # | reviews              |  ✅   |   ✅    |    ❌    |
+# | trends               |  ✅   |   ✅    |    ❌    |
 #
 # Subscription requirement: only owners need an active subscription to access
 # protected resources. Members can continue operating normally.
@@ -46,6 +47,7 @@ class AccessCapabilities:
     can_manage_finances: bool = False
     can_manage_reservations: bool = False
     can_manage_reviews: bool = False
+    can_view_trends: bool = False
 
 
 @dataclass
@@ -112,6 +114,7 @@ def _build_capabilities(role: str, subscription_active: bool) -> AccessCapabilit
             can_manage_finances=True,
             can_manage_reservations=True,
             can_manage_reviews=True,
+            can_view_trends=True,
         )
     if role == "manager":
         return AccessCapabilities(
@@ -122,6 +125,7 @@ def _build_capabilities(role: str, subscription_active: bool) -> AccessCapabilit
             can_manage_finances=True,
             can_manage_reservations=True,
             can_manage_reviews=True,
+            can_view_trends=True,
         )
     # employee
     return AccessCapabilities(
@@ -132,6 +136,7 @@ def _build_capabilities(role: str, subscription_active: bool) -> AccessCapabilit
         can_manage_finances=True,
         can_manage_reservations=True,
         can_manage_reviews=False,
+        can_view_trends=False,
     )
 
 

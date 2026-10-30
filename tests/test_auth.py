@@ -33,6 +33,7 @@ class TestBuildCapabilities:
         assert caps.can_manage_products is True
         assert caps.can_manage_finances is True
         assert caps.can_manage_reservations is True
+        assert caps.can_view_trends is True
 
     def test_owner_without_subscription_cannot_access_app(self):
         caps = _build_capabilities("owner", subscription_active=False)
@@ -47,6 +48,7 @@ class TestBuildCapabilities:
         assert caps.can_manage_products is True
         assert caps.can_manage_finances is True
         assert caps.can_manage_reservations is True
+        assert caps.can_view_trends is True
 
     def test_employee_can_manage_reservations_and_view_finances(self):
         caps = _build_capabilities("employee", subscription_active=True)
@@ -55,6 +57,7 @@ class TestBuildCapabilities:
         assert caps.can_manage_products is False
         assert caps.can_manage_finances is True
         assert caps.can_manage_reservations is True
+        assert caps.can_view_trends is False
 
 
 # ---------------------------------------------------------------------------
