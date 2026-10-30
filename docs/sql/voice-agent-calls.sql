@@ -29,5 +29,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS ix_voicecall_call_id ON voicecall (call_id);
 CREATE INDEX IF NOT EXISTS ix_voicecall_business_id ON voicecall (business_id);
 CREATE INDEX IF NOT EXISTS ix_voicecall_started_at ON voicecall (started_at);
 
+-- Solo el backend accede a la tabla: sin politicas, RLS cierra la API de Supabase.
+ALTER TABLE voicecall ENABLE ROW LEVEL SECURITY;
+
 -- Vuelta atras:
 -- DROP TABLE IF EXISTS voicecall;
