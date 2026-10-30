@@ -2,7 +2,7 @@
 Permisos por rol de las herramientas del asistente (businext-backend#23).
 """
 import json
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 
 import pytest
 from sqlalchemy.pool import StaticPool
@@ -13,12 +13,26 @@ from src.api.auth import AccessCapabilities, AuthContext
 from src.database.models.finances_model import Finances
 from src.database.models.profile_model import Profile
 from src.database.models.reservation_model import Reservation
+from src.routers import reservation as reservation_router
 from src.services.assistant.llm import LLMDelta, ToolCallDelta
 from src.services.assistant.orchestrator import run_turn
 from src.services.assistant.tools import TOOLS, ToolContext, tools_for
 
 BIZ = "owner-1"
 TODAY = date(2026, 10, 22)
+
+
+class _FrozenDatetime(datetime):
+    @classmethod
+    def now(cls, tz=None):
+        return datetime.combine(TODAY, time(12, 0), tzinfo=tz)
+
+
+@pytest.fixture(autouse=True)
+def frozen_clock(monkeypatch):
+    # get_reservations filtra con el reloj real (PENDING de los ultimos 7 dias) y los datos son de TODAY.
+    monkeypatch.setattr(reservation_router, "datetime", _FrozenDatetime)
+
 
 MATRIX = {
     "get_reservations": {"owner", "manager", "employee"},
