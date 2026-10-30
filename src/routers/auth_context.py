@@ -72,5 +72,6 @@ def get_access_context(
             "canManageFinances": auth.capabilities.can_manage_finances,
             "canManageReservations": auth.capabilities.can_manage_reservations,
             "canManageReviews": auth.capabilities.can_manage_reviews,
+            "canViewTrends": auth.capabilities.can_view_trends,
         },
     }
