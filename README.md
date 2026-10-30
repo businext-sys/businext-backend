@@ -71,6 +71,13 @@ GMAIL_BUSINEXT_USER=                 # src/services/employee_service.py
 GMAIL_BUSINEXT_PASSWORD=
 RETELL_API_KEY=                      # agente de voz: la API key «webhook» de Retell
 RETELL_AGENT_ID=                     # agente de voz: el agente plantilla
+
+# Radar de tendencias (src/services/trend_sources.py)
+TRENDS_ENABLED=false                 # con algo distinto de "true" la ingesta no hace nada
+TRENDS_JOB_SECRET=                   # firma de POST /internal/trends/ingest
+ANTHROPIC_API_KEY=                   # Messages API de Claude
+TRENDS_MCP_VIDIQ_URL=https://mcp.vidiq.com/mcp
+TRENDS_MCP_VIDIQ_TOKEN=              # API key de vidIQ de la cuenta de Businext
 ```
 
 ### CORS
@@ -318,3 +325,21 @@ nunca se editan a mano.
 > `src/export_schema.py` no tiene nada que ver con esto: es un script muerto de
 > una epoca en la que el proyecto usaba SQLite (abre un `database.db` que ya no
 > existe). Nadie lo importa; se puede borrar.
+
+## Radar de tendencias
+
+Las preferencias de contenido de cada negocio estan en `GET`/`PUT /trends/preferences`
+(owner y manager). La ingesta diaria es `POST /internal/trends/ingest`, con
+`Authorization: Bearer <TRENDS_JOB_SECRET>`. Por cada (nicho, idioma, pais) de los
+negocios con `contentpreferences.enabled`, pide a Claude (`claude-opus-5-5`, con el
+conector MCP de vidIQ y solo `vidiq_instagram_tiktok_outlier_search`) las tendencias
+de Instagram y TikTok y las guarda en `trendsnapshot`. Si vidIQ no devuelve nada,
+guarda una lista vacia.
+
+Cada consulta cuesta 5 creditos de vidIQ, asi que una combinacion que ya tiene snapshot
+hoy (dia de `Europe/Madrid`) se salta sin consultar. Relanzar la ingesta el mismo dia
+no repite consultas ni filas.
+
+La lanza a diario el workflow `.github/workflows/trends-ingest.yml` (necesita el
+secret `TRENDS_JOB_SECRET` en el repo), que tambien se puede lanzar a mano desde
+Actions.
