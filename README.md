@@ -115,7 +115,8 @@ En la practica:
   `pushtoken` (issue #031 del monorepo, `docs/sql/031-push-token.sql`) y las
   del historial del asistente (`docs/sql/024-assistant-conversations.sql`,
   `docs/sql/025-assistant-usage.sql`) y las del radar de tendencias
-  (`docs/sql/163-trends.sql`, aplicado con el MCP de Supabase).
+  (`docs/sql/163-trends.sql` y `docs/sql/165-trend-analysis.sql`, aplicados
+  con el MCP de Supabase).
 - Activa RLS en cada tabla nueva (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`,
   sin politicas): el backend no lo necesita, pero sin RLS la API publica de
   Supabase expone la tabla con la anon key.
@@ -340,6 +341,20 @@ Cada consulta cuesta 5 creditos de vidIQ, asi que una combinacion que ya tiene s
 hoy (dia de `Europe/Madrid`) se salta sin consultar. Relanzar la ingesta el mismo dia
 no repite consultas ni filas.
 
-La lanza a diario el workflow `.github/workflows/trends-ingest.yml` (necesita el
-secret `TRENDS_JOB_SECRET` en el repo), que tambien se puede lanzar a mano desde
-Actions.
+Despues, `POST /internal/trends/analyze` (`src/services/trend_analysis.py`) cruza el
+snapshot del dia de cada negocio activado con sus agregados de los ultimos 28 dias
+(catalogo de servicios, servicios mas reservados y con mas ingresos, reservas por hora y
+dia, ticket medio; nunca datos de clientes) y guarda un `trendinsight` y de 1 a 3
+`contentsuggestion` con guion de 3 pasos. Una sugerencia sin una URL del snapshot que la
+justifique se descarta. El `publish_at` lo calcula el codigo: la hora con mas reservas
+dentro del horario general del negocio (`workinghours` sin `member_user_id`), fuera del
+horario silencioso y sin pasar de `max_per_day`.
+
+Para web y movil (owner y manager): `GET /trends/insight`, `POST /trends/insight/refresh`
+(regenera el analisis de hoy y sus sugerencias `pending`; 429 la segunda vez en el dia),
+`GET /trends/suggestions?status=` y `PATCH /trends/suggestions/{id}` (`opened`,
+`dismissed` o `published`).
+
+Los dos pasos los lanza a diario el workflow `.github/workflows/trends-ingest.yml`
+(necesita el secret `TRENDS_JOB_SECRET` en el repo), que tambien se puede lanzar a mano
+desde Actions.
