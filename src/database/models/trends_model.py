@@ -6,6 +6,8 @@ from pydantic import field_validator
 from sqlmodel import Field, SQLModel, UniqueConstraint
 
 Network = Literal["instagram", "tiktok"]
+SuggestionFormat = Literal["reel", "short", "carrusel", "story"]
+SuggestionStatus = Literal["pending", "sent", "opened", "dismissed", "published"]
 
 DEFAULT_NETWORKS = '["instagram", "tiktok"]'
 
@@ -40,13 +42,14 @@ class TrendInsight(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     business_id: str = Field(index=True, nullable=False)
     day: date
-    trends_used: str  # JSON string: ids de las tendencias usadas
+    trends_used: str  # JSON string: URLs de las tendencias usadas
     analysis: str
     matched_services: str  # JSON string
     model: str
     input_tokens: int
     output_tokens: int
     created_at: datetime = Field(default_factory=datetime.utcnow)
+    refreshed_at: datetime | None = None
 
 
 class ContentSuggestion(SQLModel, table=True):
@@ -63,10 +66,11 @@ class ContentSuggestion(SQLModel, table=True):
     network: str = Field(nullable=False)
     format: str = Field(nullable=False)
     idea: str
+    script: str = Field(default="[]", nullable=False)  # JSON string: los 3 pasos del guion
     caption_hint: str
     audio_hint: str | None = None
     publish_at: datetime = Field(index=True)
-    source_trend_ids: str  # JSON string
+    source_trend_ids: str  # JSON string: URLs de las tendencias de origen
     status: str = Field(default="pending", nullable=False, index=True)
     sent_at: datetime | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -110,3 +114,37 @@ class ContentPreferencesPublic(SQLModel):
         except (ZoneInfoNotFoundError, ValueError):
             raise ValueError("Unknown timezone")
         return value
+
+
+class TrendUsed(SQLModel):
+    title: str
+    network: Network
+    url: str
+
+
+class TrendInsightPublic(SQLModel):
+    id: int
+    day: date
+    analysis: str
+    matched_services: list[str]
+    trends: list[TrendUsed]
+    created_at: datetime
+    refreshed_at: datetime | None
+
+
+class ContentSuggestionPublic(SQLModel):
+    id: int
+    network: Network
+    format: SuggestionFormat
+    idea: str
+    script: list[str]
+    caption_hint: str
+    audio_hint: str | None
+    publish_at: datetime
+    source_trend_ids: list[str]
+    status: SuggestionStatus
+    sent_at: datetime | None
+
+
+class ContentSuggestionStatusUpdate(SQLModel):
+    status: Literal["opened", "dismissed", "published"]
