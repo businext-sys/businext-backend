@@ -154,7 +154,7 @@ def business_aggregates(session: Session, business_id: str, today: date) -> dict
     }
 
 
-def _is_quiet(preferences: ContentPreferences, moment: time) -> bool:
+def is_quiet(preferences: ContentPreferences, moment: time) -> bool:
     start, end = preferences.quiet_from, preferences.quiet_to
     if start > end:
         return moment >= start or moment < end
@@ -201,7 +201,7 @@ def publish_slots(
             hour
             for hour in range(24)
             if _is_open(working_hours, day.weekday(), hour)
-            and not _is_quiet(preferences, time(hour))
+            and not is_quiet(preferences, time(hour))
             and datetime.combine(day, time(hour), tz) >= local_now + MIN_LEAD
         ]
         best = sorted(hours, key=lambda hour: (-hour_counts[hour], hour))
