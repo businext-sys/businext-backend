@@ -1,7 +1,8 @@
 name: Trends ingest
 
-# Ingesta diaria del radar de tendencias (businext-sys/businext#164). Llama a
-# POST /internal/trends/ingest del backend en Render con el secret
+# Ingesta y analisis diarios del radar de tendencias (businext-sys/businext#164,
+# #165). Llama a POST /internal/trends/ingest y despues a
+# POST /internal/trends/analyze del backend en Render con el secret
 # TRENDS_JOB_SECRET. 04:00 UTC son las 05:00 en Madrid en invierno y las 06:00
 # en verano.
 
@@ -27,4 +28,11 @@ jobs:
           curl -fsS --max-time 600 -X POST \
             -H "Authorization: Bearer $TRENDS_JOB_SECRET" \
             "$BASE_URL/internal/trends/ingest"
+          echo
+
+      - name: Lanzar el analisis
+        run: |
+          curl -fsS --max-time 900 -X POST \
+            -H "Authorization: Bearer $TRENDS_JOB_SECRET" \
+            "$BASE_URL/internal/trends/analyze"
           echo
