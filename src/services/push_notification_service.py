@@ -16,6 +16,7 @@ def send_push_notifications(
     title: str,
     body: str,
     data: dict | None = None,
+    channel_id: str | None = None,
 ) -> None:
     """Envia una notificacion push a una lista de Expo push tokens.
 
@@ -33,6 +34,7 @@ def send_push_notifications(
             "body": body,
             "sound": "default",
             **({"data": data} if data else {}),
+            **({"channelId": channel_id} if channel_id else {}),
         }
         for token in tokens
     ]
