@@ -7,8 +7,12 @@ Radar de tendencias (businext-sys/businext#161).
   `GET /trends/suggestions` y `PATCH /trends/suggestions/{id}`: analisis del
   dia y sugerencias de contenido (owner y manager).
 - `POST /internal/trends/ingest` y `POST /internal/trends/analyze`: ingesta y
-  analisis diarios, lanzados por el workflow `trends-ingest.yml` con
-  `Authorization: Bearer <TRENDS_JOB_SECRET>` (401 sin el).
+  analisis diarios, lanzados por el workflow `trends-ingest.yml`.
+- `POST /internal/trends/dispatch`: avisos push de las sugerencias, lanzado
+  cada 15 minutos por el cron job de Render `businext-trends-dispatch`.
+
+Las rutas de `/internal/trends` exigen `Authorization: Bearer <TRENDS_JOB_SECRET>`
+(401 sin el).
 """
 
 import hmac
@@ -32,6 +36,7 @@ from src.database.models.trends_model import (
     TrendInsight,
     TrendInsightPublic,
 )
+from src.services.suggestion_dispatcher import dispatch_suggestions
 from src.services.trend_analysis import TrendAnalysisError, analyze_business, analyze_trends, today_snapshot
 from src.services.trend_sources import BUSINESS_TIMEZONE, ingest_trends
 
@@ -190,3 +195,9 @@ def ingest(session: SessionDep):
 def analyze(session: SessionDep):
     """Analiza los negocios activados con tendencias de hoy; relanzarlo no repite analisis."""
     return analyze_trends(session)
+
+
+@internal_router.post("/dispatch")
+def dispatch(session: SessionDep):
+    """Envia los avisos de las sugerencias que tocan; relanzarlo no reenvia ninguno."""
+    return dispatch_suggestions(session, datetime.utcnow())

@@ -35,6 +35,18 @@ class TestSendPushNotifications:
         assert all(m["title"] == "Nueva solicitud" for m in messages)
         assert all(m["data"]["bookingRequestId"] == 42 for m in messages)
 
+    def test_sends_the_android_channel(self):
+        mock_client = MagicMock()
+        mock_client.__enter__.return_value.post.return_value = MagicMock(status_code=200)
+
+        with patch("httpx.Client", return_value=mock_client):
+            send_push_notifications(["token-1"], "T", "B")
+            send_push_notifications(["token-1"], "T", "B", channel_id="content")
+
+        first, second = mock_client.__enter__.return_value.post.call_args_list
+        assert "channelId" not in first.kwargs["json"][0]
+        assert second.kwargs["json"][0]["channelId"] == "content"
+
     def test_does_not_raise_on_http_error(self):
         mock_response = MagicMock(status_code=400, text="Bad Request")
         mock_client = MagicMock()

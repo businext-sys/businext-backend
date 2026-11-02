@@ -358,3 +358,11 @@ Para web y movil (owner y manager): `GET /trends/insight`, `POST /trends/insight
 Los dos pasos los lanza a diario el workflow `.github/workflows/trends-ingest.yml`
 (necesita el secret `TRENDS_JOB_SECRET` en el repo), que tambien se puede lanzar a mano
 desde Actions.
+
+Los avisos los envia `POST /internal/trends/dispatch` (`src/services/suggestion_dispatcher.py`),
+que lanza cada 15 minutos el cron job de Render `businext-trends-dispatch` (un `curl` con
+`TRENDS_JOB_SECRET`; el `schedule` de GitHub Actions llega con horas de retraso). Envia por Expo
+Push, al owner y a los managers activos, las sugerencias `pending` que se publican en 45 minutos
+o menos (`data: {type: "content_suggestion", id}`, canal Android `content`) y las marca `sent`,
+tambien sin dispositivos registrados, para que la web las muestre. Dentro del horario silencioso
+no envia nada, y nunca mas de `max_per_day` al dia.
