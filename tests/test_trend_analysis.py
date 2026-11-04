@@ -227,6 +227,28 @@ class TestAnalyzeEndpoint:
         local = suggestion.publish_at.replace(tzinfo=timezone.utc).astimezone(MADRID)
         assert time(10) <= local.time() < time(20)
 
+    def test_sustituye_las_pendientes_de_analisis_anteriores(self, client, session):
+        yesterday = datetime.combine(today() - timedelta(days=1), time(12))
+        for status in ("pending", "sent"):
+            session.add(ContentSuggestion(
+                business_id=OWNER, insight_id=99, network="tiktok", format="reel", idea=status,
+                caption_hint="x", publish_at=yesterday + timedelta(days=3), source_trend_ids="[]", status=status,
+            ))
+        session.commit()
+        client.post("/internal/trends/analyze", headers=JOB_AUTH)
+        assert sorted((s.idea, s.status) for s in suggestions(session)) == [
+            (SUGGESTION["idea"], "pending"), ("sent", "sent"),
+        ]
+
+    @pytest.mark.parametrize("max_per_day, created", [(1, 1), (2, 2), (5, 3)])
+    def test_crea_como_mucho_max_per_day(self, client, session, business, claude, max_per_day, created):
+        business.max_per_day = max_per_day
+        session.commit()
+        many = [{**SUGGESTION, "idea": f"Idea {i}"} for i in range(4)]
+        claude.beta.messages.create.return_value = claude_response({**ANALYSIS, "suggestions": many})
+        client.post("/internal/trends/analyze", headers=JOB_AUTH)
+        assert len(suggestions(session)) == created
+
     def test_relanzar_no_repite(self, client, session, claude):
         client.post("/internal/trends/analyze", headers=JOB_AUTH)
         response = client.post("/internal/trends/analyze", headers=JOB_AUTH)
