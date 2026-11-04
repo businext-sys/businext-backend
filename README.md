@@ -344,14 +344,15 @@ no repite consultas ni filas.
 Despues, `POST /internal/trends/analyze` (`src/services/trend_analysis.py`) cruza el
 snapshot del dia de cada negocio activado con sus agregados de los ultimos 28 dias
 (catalogo de servicios, servicios mas reservados y con mas ingresos, reservas por hora y
-dia, ticket medio; nunca datos de clientes) y guarda un `trendinsight` y de 1 a 3
-`contentsuggestion` con guion de 3 pasos. Una sugerencia sin una URL del snapshot que la
+dia, ticket medio; nunca datos de clientes) y guarda un `trendinsight` y hasta `max_per_day`
+`contentsuggestion` (maximo 3) con guion de 3 pasos, que sustituyen a las que el negocio aun
+tenga `pending`. Una sugerencia sin una URL del snapshot que la
 justifique se descarta. El `publish_at` lo calcula el codigo: la hora con mas reservas
 dentro del horario general del negocio (`workinghours` sin `member_user_id`), fuera del
 horario silencioso y sin pasar de `max_per_day`.
 
 Para web y movil (owner y manager): `GET /trends/insight`, `POST /trends/insight/refresh`
-(regenera el analisis de hoy y sus sugerencias `pending`; 429 la segunda vez en el dia),
+(regenera el analisis de hoy y las sugerencias `pending`; 429 la segunda vez en el dia),
 `GET /trends/suggestions?status=` y `PATCH /trends/suggestions/{id}` (`opened`,
 `dismissed` o `published`).
 

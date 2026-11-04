@@ -244,8 +244,9 @@ def analyze_business(
     session: Session, preferences: ContentPreferences, snapshot: TrendSnapshot, now: datetime, refresh: bool = False
 ) -> TrendInsight:
     """
-    Genera (o con `refresh`, regenera) el analisis de hoy del negocio y sus
-    sugerencias. Al regenerar se sustituyen las sugerencias aun `pending`.
+    Genera (o con `refresh`, regenera) el analisis de hoy del negocio y como
+    mucho `max_per_day` sugerencias, que sustituyen a todas las que el negocio
+    aun tenga `pending`.
     """
     trends = json.loads(snapshot.payload)
     if not trends:
@@ -274,19 +275,18 @@ def analyze_business(
         sources = [url for url in draft.source_trend_urls if url in trends_by_url]
         if sources and draft.script and draft.network in business["networks"]:
             drafts.append(draft.model_copy(update={"source_trend_urls": sources, "script": draft.script[:3]}))
-    drafts = drafts[:MAX_SUGGESTIONS]
+    drafts = drafts[: min(MAX_SUGGESTIONS, preferences.max_per_day)]
 
     insight = session.exec(
         select(TrendInsight).where(TrendInsight.business_id == business_id, TrendInsight.day == today)
     ).first() or TrendInsight(business_id=business_id, day=today)
-    if insight.id is not None:
-        for pending in session.exec(
-            select(ContentSuggestion).where(
-                ContentSuggestion.insight_id == insight.id, ContentSuggestion.status == "pending"
-            )
-        ).all():
-            session.delete(pending)
-        session.flush()
+    for pending in session.exec(
+        select(ContentSuggestion).where(
+            ContentSuggestion.business_id == business_id, ContentSuggestion.status == "pending"
+        )
+    ).all():
+        session.delete(pending)
+    session.flush()
 
     used_urls = list(dict.fromkeys(url for draft in drafts for url in draft.source_trend_urls))
     usage = response.usage
