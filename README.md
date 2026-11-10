@@ -116,7 +116,8 @@ En la practica:
   del historial del asistente (`docs/sql/024-assistant-conversations.sql`,
   `docs/sql/025-assistant-usage.sql`) y las del radar de tendencias
   (`docs/sql/163-trends.sql` y `docs/sql/165-trend-analysis.sql`, aplicados
-  con el MCP de Supabase).
+  con el MCP de Supabase). Las columnas nuevas tambien: el contacto del
+  cliente en `reservation` (`docs/sql/181-reservation-contact.sql`).
 - Activa RLS en cada tabla nueva (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`,
   sin politicas): el backend no lo necesita, pero sin RLS la API publica de
   Supabase expone la tabla con la anon key.
