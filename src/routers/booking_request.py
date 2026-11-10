@@ -10,7 +10,7 @@ from src.database.models.booking_request_model import (
     BookingRequest,
     BookingRequestPublic,
 )
-from src.database.models.reservation_model import Reservation
+from src.database.models.reservation_model import Reservation, clean_phone
 from src.database.models.business_conf_model import BusinessConfiguration
 from src.database.models.location_model import Location
 from src.services.email_service import (
@@ -66,6 +66,8 @@ def accept_booking_request(
         time_per_reservation=30,
         status="PENDING",
         service=booking.service,
+        customer_phone=clean_phone(booking.client_phone),
+        customer_email=booking.client_email,
     )
     session.add(reservation)
 
