@@ -33,7 +33,7 @@ from src.database.database import SessionDep
 from src.database.models.booking_request_model import BookingRequestCreate
 from src.database.models.business_conf_model import BusinessConfiguration
 from src.database.models.location_model import Location
-from src.database.models.reservation_model import Reservation
+from src.database.models.reservation_model import Reservation, clean_phone
 from src.database.models.voice_agent_model import (
     VoiceAgentConfig,
     VoiceAgentConfigPublic,
@@ -500,12 +500,14 @@ def _book_appointment(session, business_id: str, config, call: RetellCall, args:
             "request_id": result["id"],
             "message": "Solicitud enviada. El negocio la confirmará y el cliente recibirá un email.",
         }
-    result = _confirm_reservation(session, business_id, parsed, start, employee_name)
+    result = _confirm_reservation(session, business_id, parsed, start, employee_name, client_phone)
     _record_call(session, call.call_id, business_id, booking_mode="confirm", booking_id=result["reservation_id"])
     return result
 
 
-def _confirm_reservation(session, business_id: str, parsed: BookArgs, start: datetime, in_charge: str | None) -> dict:
+def _confirm_reservation(
+    session, business_id: str, parsed: BookArgs, start: datetime, in_charge: str | None, client_phone: str
+) -> dict:
     """
     Modo «confirmar directamente»: la misma reserva que crea aceptar una
     solicitud (`booking_request.accept_booking_request`) y el mismo email de
@@ -520,6 +522,8 @@ def _confirm_reservation(session, business_id: str, parsed: BookArgs, start: dat
         time_per_reservation=SLOT_DURATION_MINUTES,
         status="PENDING",
         service=parsed.service,
+        customer_phone=clean_phone(client_phone),
+        customer_email=parsed.client_email,
     )
     session.add(reservation)
     session.commit()

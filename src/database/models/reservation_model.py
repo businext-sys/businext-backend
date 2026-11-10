@@ -1,6 +1,13 @@
 from typing import Optional
+from pydantic import EmailStr, field_validator
 from sqlmodel import Field, SQLModel
 from datetime import datetime
+
+
+def clean_phone(phone: str | None) -> str | None:
+    if not phone:
+        return None
+    return "".join(phone.split()) or None
 
 
 class ReservationBase(SQLModel):
@@ -11,6 +18,13 @@ class ReservationBase(SQLModel):
     time_per_reservation: int  # in minutes
     status: str
     service: str
+    customer_phone: str | None = None
+    customer_email: EmailStr | None = None
+
+    @field_validator("customer_phone")
+    @classmethod
+    def _clean_phone(cls, value: str | None) -> str | None:
+        return clean_phone(value)
 
 
 class Reservation(ReservationBase, table=True):
@@ -21,6 +35,8 @@ class Reservation(ReservationBase, table=True):
 
 class ReservationPublic(ReservationBase):
     id: int
+    # Solicitudes antiguas pueden traer emails no válidos: se validan al entrar, no al leer.
+    customer_email: str | None = None
 
 
 class ReservationUpdate(ReservationBase):
