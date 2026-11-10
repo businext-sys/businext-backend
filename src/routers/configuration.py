@@ -6,8 +6,9 @@ from ..database.models.business_conf_model import (
     BusinessConfiguration,
     BusinessConfigurationBase,
     BusinessConfigurationUpdate,
+    RemindersSetting,
 )
-from src.api.auth import AuthContext, require_subscription, require_owner
+from src.api.auth import AuthContext, require_subscription, require_owner, require_manager_or_owner
 
 
 router = APIRouter(
@@ -44,6 +45,32 @@ def create_configuration(
     session.commit()
     session.refresh(config_obj)
     return config_obj
+
+
+def _business_configuration(session, business_id: str) -> BusinessConfiguration:
+    configuration = session.exec(
+        select(BusinessConfiguration).where(BusinessConfiguration.business_id == business_id)
+    ).first()
+    if not configuration:
+        raise HTTPException(status_code=404, detail="Configuration not found")
+    return configuration
+
+
+@router.get("/reminders", response_model=RemindersSetting)
+def get_reminders_setting(session: SessionDep, auth: AuthContext = Depends(require_manager_or_owner)):
+    return _business_configuration(session, auth.business_id)
+
+
+@router.put("/reminders", response_model=RemindersSetting)
+def update_reminders_setting(
+    body: RemindersSetting, session: SessionDep, auth: AuthContext = Depends(require_manager_or_owner)
+):
+    configuration = _business_configuration(session, auth.business_id)
+    configuration.reminders_enabled = body.reminders_enabled
+    session.add(configuration)
+    session.commit()
+    session.refresh(configuration)
+    return configuration
 
 
 @router.patch("/{configuration_id}", response_model=BusinessConfigurationPublic)
