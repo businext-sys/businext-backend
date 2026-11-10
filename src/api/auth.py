@@ -32,6 +32,7 @@ SUPABASE_JWT_SECRET = os.getenv("SUPABASE_JWT_SECRET")
 # | reservations write   |  ✅   |   ✅    |    ✅    |
 # | reviews              |  ✅   |   ✅    |    ❌    |
 # | trends               |  ✅   |   ✅    |    ❌    |
+# | customer messages    |  ✅   |   ✅    |    ❌    |
 #
 # Subscription requirement: only owners need an active subscription to access
 # protected resources. Members can continue operating normally.
