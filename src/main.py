@@ -17,6 +17,7 @@ from .routers import (
     product,
     public_booking,
     push_token,
+    reminders,
     reservation,
     trends,
     voice_agent,
@@ -70,5 +71,6 @@ app.include_router(push_token.router)
 app.include_router(assistant.router)
 app.include_router(trends.router)
 app.include_router(trends.internal_router)
+app.include_router(reminders.internal_router)
 app.include_router(voice_agent.router)
 app.include_router(voice_agent.retell_router)

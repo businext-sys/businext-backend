@@ -78,6 +78,9 @@ TRENDS_JOB_SECRET=                   # firma de POST /internal/trends/ingest
 ANTHROPIC_API_KEY=                   # Messages API de Claude
 TRENDS_MCP_VIDIQ_URL=https://mcp.vidiq.com/mcp
 TRENDS_MCP_VIDIQ_TOKEN=              # API key de vidIQ de la cuenta de Businext
+
+# Recordatorios de citas (src/services/reminder_service.py)
+REMINDERS_JOB_SECRET=                # firma de POST /internal/reminders/run
 ```
 
 ### CORS
@@ -117,7 +120,8 @@ En la practica:
   `docs/sql/025-assistant-usage.sql`) y las del radar de tendencias
   (`docs/sql/163-trends.sql` y `docs/sql/165-trend-analysis.sql`, aplicados
   con el MCP de Supabase). Las columnas nuevas tambien: el contacto del
-  cliente en `reservation` (`docs/sql/181-reservation-contact.sql`).
+  cliente en `reservation` (`docs/sql/181-reservation-contact.sql`) y los
+  recordatorios de citas (`docs/sql/183-reminders.sql`).
 - Activa RLS en cada tabla nueva (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`,
   sin politicas): el backend no lo necesita, pero sin RLS la API publica de
   Supabase expone la tabla con la anon key.
@@ -368,3 +372,20 @@ Push, al owner y a los managers activos, las sugerencias `pending` que se public
 o menos (`data: {type: "content_suggestion", id}`, canal Android `content`) y las marca `sent`,
 tambien sin dispositivos registrados, para que la web las muestre. Dentro del horario silencioso
 no envia nada, y nunca mas de `max_per_day` al dia.
+
+## Recordatorios de citas
+
+`POST /internal/reminders/run` (`src/services/reminder_service.py`) envia por email un
+recordatorio al cliente de cada reserva `PENDING` con email que empieza entre 23 y 25 horas
+despues (hora de `Europe/Madrid`, la misma hora de pared con la que se guardan las reservas), si
+el negocio tiene `reminders_enabled`. Marca `reminder_sent_at`, asi que relanzarlo no reenvia
+ninguno; si Resend falla, se reintenta en la siguiente pasada. Lo lanza cada hora un cron job de
+Render con un `curl` firmado con `REMINDERS_JOB_SECRET`:
+
+```bash
+curl -fsS -X POST -H "Authorization: Bearer $REMINDERS_JOB_SECRET" \
+  https://businext-backend.onrender.com/internal/reminders/run
+```
+
+El owner y el manager leen y cambian el ajuste con `GET`/`PUT /configuration/reminders`
+(`{"reminders_enabled": bool}`, activado por defecto).

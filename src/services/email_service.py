@@ -254,3 +254,44 @@ def email_request_expired(
     </p>
     """
     return subject, _wrap(body, business_name, business_phone, business_email)
+
+
+def email_appointment_reminder(
+    client_name: str,
+    service: str,
+    date_str: str,
+    business_name: str,
+    employee_name: str | None = None,
+    business_phone: str | None = None,
+    business_email: str | None = None,
+    location_address: str | None = None,
+) -> tuple[str, str]:
+    """Reminder to the client the day before their appointment."""
+    subject = f"Recordatorio de tu cita mañana — {business_name}"
+
+    employee_row = _detail_row("Profesional", employee_name) if employee_name else ""
+    address_row = _detail_row("Dirección", location_address) if location_address else ""
+    change_html = f"""
+    <p style="margin:16px 0 0; font-size:13px; color:#4b5563; text-align:center; line-height:1.5;">
+      ¿Necesitas cambiar la cita? Llama al
+      <a href="tel:{business_phone}" style="color:#2563eb; text-decoration:none;">{business_phone}</a>.
+    </p>
+    """ if business_phone else ""
+
+    body = f"""
+    <h2 style="margin:0 0 8px; font-size:20px; color:#111827; text-align:center;">Tu cita es mañana</h2>
+    <p style="margin:0 0 20px; font-size:14px; color:#4b5563; line-height:1.5; text-align:center;">
+      Hola {client_name}, te recordamos tu cita en {business_name}.
+    </p>
+    <table style="width:100%; border-collapse:collapse; background:#f9fafb; border-radius:8px; overflow:hidden; margin:16px 0;">
+      {_detail_row("Servicio", service)}
+      {_detail_row("Fecha", date_str)}
+      {employee_row}
+      {address_row}
+    </table>
+    <p style="margin:16px 0 0; font-size:15px; color:#111827; text-align:center; font-weight:600;">
+      ¡Te esperamos!
+    </p>
+    {change_html}
+    """
+    return subject, _wrap(body, business_name, business_phone, business_email)

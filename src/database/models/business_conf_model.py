@@ -15,12 +15,17 @@ class BusinessConfigurationBase(SQLModel):
 class BusinessConfiguration(BusinessConfigurationBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     business_id: str = Field(index=True, nullable=False, unique=True)
+    reminders_enabled: bool = Field(default=True, nullable=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
 
 class BusinessConfigurationPublic(BusinessConfigurationBase):
     id: int
+
+
+class RemindersSetting(SQLModel):
+    reminders_enabled: bool
 
 
 class BusinessConfigurationUpdate(BusinessConfigurationBase):

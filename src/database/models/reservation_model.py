@@ -31,6 +31,7 @@ class Reservation(ReservationBase, table=True):
     id: int | None = Field(default=None, primary_key=True)
     business_id: str = Field(index=True, nullable=False)
     created_at: datetime = Field(default_factory=datetime.utcnow, index=True)
+    reminder_sent_at: datetime | None = None
 
 
 class ReservationPublic(ReservationBase):
