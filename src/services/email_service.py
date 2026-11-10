@@ -1,5 +1,6 @@
 import os
 import resend
+from html import escape
 from typing import Optional
 
 
@@ -293,5 +294,19 @@ def email_appointment_reminder(
       ¡Te esperamos!
     </p>
     {change_html}
+    """
+    return subject, _wrap(body, business_name, business_phone, business_email)
+
+
+def email_customer_message(
+    message: str, business_name: str,
+    business_phone: str | None = None, business_email: str | None = None,
+) -> tuple[str, str]:
+    """Email written by the business to a customer who hasn't come back in a while."""
+    subject = f"Te echamos de menos — {business_name}"
+    paragraphs = escape(message).replace("\n", "<br>")
+
+    body = f"""
+    <p style="margin:0; font-size:14px; color:#374151; line-height:1.6;">{paragraphs}</p>
     """
     return subject, _wrap(body, business_name, business_phone, business_email)

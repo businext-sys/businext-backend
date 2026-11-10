@@ -9,6 +9,7 @@ from .routers import (
     auth_context,
     booking_request,
     configuration,
+    customer_message,
     employee,
     finances,
     google_reviews,
@@ -74,3 +75,4 @@ app.include_router(trends.internal_router)
 app.include_router(reminders.internal_router)
 app.include_router(voice_agent.router)
 app.include_router(voice_agent.retell_router)
+app.include_router(customer_message.router)
