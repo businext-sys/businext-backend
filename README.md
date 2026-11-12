@@ -299,6 +299,12 @@ barberias (businext-sys/businext#117, decision en
 - `GET`/`PATCH /voice-agent/config` — `{ enabled, booking_mode, phone_numbers }`,
   solo owner. `booking_mode`: `request` (solicitud, por defecto) o `confirm`
   (reserva directa en la agenda).
+- `POST /retell/webhook` — eventos de la llamada, guardados en `voicecall`. El
+  `summary` es propio: la primera vez que llega la transcripcion,
+  `generate_call_summary` (`src/services/ai_service.py`) la resume en español
+  en 1-2 frases (quien llamo, que queria y como acabo). Si la IA falla o no
+  hay `OPENAI_API_KEY`, se guarda el `call_summary` de Retell recortado a 2
+  frases y el webhook responde 204 igual.
 
 Todo `/retell/*` exige `X-Retell-Signature` firmada con `RETELL_API_KEY`
 (401 si falta o no cuadra). **Las tablas se crean a mano** con

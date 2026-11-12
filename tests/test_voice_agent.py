@@ -24,6 +24,7 @@ from src.database.models.working_hours_model import WorkingHours
 from src.main import app
 from src.routers import public_booking, voice_agent
 from src.services import retell
+from src.services.ai_service import AIServiceError
 
 API_KEY = "key_test"
 OWNER = "owner-1"
@@ -33,6 +34,10 @@ OTHER_NUMBER = "+34910000002"
 TOMORROW = (datetime.now() + timedelta(days=1)).date()
 
 
+def no_ai(transcript):
+    raise AIServiceError("Servicio de IA no configurado. Falta la clave de API.")
+
+
 @pytest.fixture
 def session(monkeypatch):
     monkeypatch.setenv("RETELL_API_KEY", API_KEY)
@@ -40,6 +45,7 @@ def session(monkeypatch):
     monkeypatch.setattr(public_booking, "send_email", lambda *args, **kwargs: None)
     monkeypatch.setattr(public_booking, "send_push_notifications", lambda **kwargs: None)
     monkeypatch.setattr(voice_agent, "send_email", lambda *args, **kwargs: None)
+    monkeypatch.setattr(voice_agent, "generate_call_summary", no_ai)
 
     engine = create_engine("sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
     SQLModel.metadata.create_all(engine)
@@ -295,6 +301,34 @@ class TestCallLog:
         assert (call.status, call.duration_seconds, call.transcript) == ("ended", 95, "Agent: Hola")
         assert (call.summary, call.sentiment, call.successful) == ("Pide cita", "Positive", True)
         assert call.started_at == datetime(2025, 10, 9, 8, 53, 20)
+
+    def test_el_resumen_es_propio_y_se_genera_una_vez(self, client, session, monkeypatch):
+        transcripts = []
+
+        def summarize(transcript):
+            transcripts.append(transcript)
+            return "Una clienta llamó para pedir cita el viernes y quedó reservada."
+
+        monkeypatch.setattr(voice_agent, "generate_call_summary", summarize)
+        inbound(client, NUMBER)
+        call_event(client, "call_ended", transcript="Agent: Hola\nUser: Quiero cita")
+        call_event(
+            client, "call_analyzed", transcript="Agent: Hola\nUser: Quiero cita",
+            call_analysis={"call_summary": "The user called to book an appointment.", "user_sentiment": "Positive"},
+        )
+        call = the_call(session)
+        assert call.summary == "Una clienta llamó para pedir cita el viernes y quedó reservada."
+        assert call.sentiment == "Positive"
+        assert transcripts == ["Agent: Hola\nUser: Quiero cita"]
+
+    def test_si_la_ia_falla_guarda_el_de_retell_recortado(self, client, session):
+        inbound(client, NUMBER)
+        response = call_event(
+            client, "call_analyzed", transcript="Agent: Hola",
+            call_analysis={"call_summary": "The user called. They wanted a haircut. The agent booked it. Bye."},
+        )
+        assert response.status_code == 204
+        assert the_call(session).summary == "The user called. They wanted a haircut."
 
     def test_la_reserva_queda_apuntada_en_la_llamada(self, client, session):
         inbound(client, NUMBER)
