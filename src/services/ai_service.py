@@ -4,11 +4,18 @@ from datetime import datetime, timezone
 from openai import OpenAI
 from dotenv import load_dotenv
 
+from src.services.text_limits import shorten
+
 load_dotenv()
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 client = OpenAI(api_key=OPENAI_API_KEY) if OPENAI_API_KEY else None
+
+HEADLINE_MAX_CHARS = 120
+ANALYSIS_MAX_CHARS = 240
+OPPORTUNITY_MAX_CHARS = 160
+MAX_OPPORTUNITIES = 3
 
 
 def generate_review_response(
@@ -284,6 +291,7 @@ def generate_weekly_summary(
         "NUNCA uses jerga técnica. En vez de decir 'un incremento del 63%', di algo como "
         "'ingresaste casi el doble que la semana pasada'. "
         "Traduce los datos en lo que significan para el negocio en el día a día. "
+        "Sé muy breve: frases cortas, la idea principal primero, sin introducciones ni relleno. "
         "Responde SIEMPRE en formato JSON válido."
     )
 
@@ -319,44 +327,20 @@ def generate_weekly_summary(
         f"── SEMANA ANTERIOR (para comparar) ──\n"
         f"Ingresos: {prev['income']}€ | Reservas: {prev['reservations']} | Productos: {prev['product_sales']}\n\n"
         "Genera un JSON con EXACTAMENTE estas 4 claves:\n\n"
-        "1. \"narrative\": Un texto de 4-6 oraciones que explique cómo le fue al negocio. "
-        "Estructura: primero lo positivo (qué fue bien), luego lo que podría mejorar, "
-        "y cierra con una observación útil. NO repitas porcentajes ni números crudos — "
-        "tradúcelos a lenguaje humano (ej: 'tuviste un tercio más de clientes', "
-        "'los martes fueron tu día estrella'). Que el dueño sienta que alguien "
-        "analizó su negocio de verdad."
-    )
-
-    if prev_week_narrative:
-        user_prompt += (
-            " Si tienes contexto de la semana anterior, haz referencias naturales "
-            "como 'la semana pasada te comenté que...' o 'recuerda que mencioné...'. "
-            "Esto da continuidad y muestra que estás siguiendo la evolución del negocio."
-        )
-
-    user_prompt += (
-        "\n\n"
-        "2. \"client_narrative\": Un texto de 3-4 oraciones SOLO sobre los clientes y servicios. "
-        "¿Qué servicios atraen más gente? ¿Hay alguno que genera más dinero por visita? "
-        "¿Qué día conviene impulsar más? Da un consejo concreto y práctico, "
-        "no genérico. NO repitas lo que ya dijiste en narrative.\n\n"
-        "3. \"team_narrative\": Un texto de 2-3 oraciones sobre el rendimiento del equipo. "
-        "Destaca al empleado estrella de la semana y explica por qué (no solo porque facturó más, "
-        "sino qué hizo diferente — más reservas, mejor ticket medio, más productos vendidos). "
-        "Si hay diferencias notables entre empleados, menciónalas de forma constructiva. "
-        "Ejemplo: 'Carlos fue tu empleado estrella — atendió a más clientes y además vendió "
-        "productos en casi cada visita. Ana tuvo menos reservas pero su ticket medio fue más alto, "
-        "lo que indica que sus servicios son más premium.'\n\n"
-        "4. \"opportunities\": Una lista de EXACTAMENTE 3 objetos JSON. Cada objeto tiene:\n"
-        "   - \"text\": El consejo en 1-2 oraciones, accionable y basado en datos reales.\n"
+        "1. \"narrative\": Un titular de UNA sola frase (máximo 15 palabras) con lo más importante "
+        "de la semana. NO repitas porcentajes ni números crudos — tradúcelos a lenguaje humano "
+        "(ej: 'Ingresaste casi el doble que la semana pasada gracias a los sábados').\n\n"
+        "2. \"client_narrative\": 1-2 frases cortas SOLO sobre los clientes y servicios: qué servicio "
+        "o día destaca y un consejo concreto. NO repitas lo que ya dijiste en narrative.\n\n"
+        "3. \"team_narrative\": 1-2 frases cortas sobre el equipo: quién fue el empleado estrella y "
+        "qué hizo diferente (más reservas, mejor ticket medio, más productos vendidos).\n\n"
+        "4. \"opportunities\": Una lista de COMO MUCHO 3 objetos JSON. Cada objeto tiene:\n"
+        "   - \"text\": El consejo en UNA frase de menos de 20 palabras, accionable y basado en datos reales.\n"
         "   - \"impact\": \"alto\", \"medio\" o \"bajo\" — según el impacto potencial en el negocio.\n"
-        "   Asigna impacto \"alto\" a la oportunidad que más dinero o clientes puede generar, "
-        "\"medio\" a las de mejora gradual, y \"bajo\" a optimizaciones menores.\n"
         "   Ejemplos del estilo:\n"
-        '   {\"text\": \"El tinte es tu servicio más rentable (45€ por visita) pero pocos clientes lo piden — prueba a ofrecerlo como complemento del corte\", \"impact\": \"alto\"}\n'
-        '   {\"text\": \"Los domingos apenas generas ingresos — una promo de fin de semana podría llenar esos huecos\", \"impact\": \"medio\"}\n'
-        '   {\"text\": \"Las ventas de productos subieron esta semana — coloca los productos cerca de la caja para aprovechar las compras impulsivas\", \"impact\": \"bajo\"}\n'
-        "Que cada oportunidad se sienta como un consejo real, no como una frase de manual.\n"
+        '   {\"text\": \"Ofrece el tinte como complemento del corte: es tu servicio más rentable\", \"impact\": \"alto\"}\n'
+        '   {\"text\": \"Lanza una promo de domingo para llenar tu día más flojo\", \"impact\": \"medio\"}\n'
+        '   {\"text\": \"Coloca los productos junto a la caja para vender más\", \"impact\": \"bajo\"}\n'
     )
 
     response = client.chat.completions.create(
@@ -365,7 +349,7 @@ def generate_weekly_summary(
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
-        max_tokens=1200,
+        max_tokens=500,
         temperature=0.7,
         response_format={"type": "json_object"},
     )
@@ -376,25 +360,25 @@ def generate_weekly_summary(
     # Normalize opportunities — support both old string[] and new {text, impact}[] format
     raw_opps = result.get("opportunities", [])
     normalized_opps = []
-    for opp in raw_opps:
+    for opp in raw_opps[:MAX_OPPORTUNITIES]:
         if isinstance(opp, str):
-            normalized_opps.append({"text": opp, "impact": "medio"})
+            normalized_opps.append({"text": shorten(opp, 1, OPPORTUNITY_MAX_CHARS), "impact": "medio"})
         elif isinstance(opp, dict):
             normalized_opps.append({
-                "text": opp.get("text", str(opp)),
+                "text": shorten(opp.get("text", str(opp)), 1, OPPORTUNITY_MAX_CHARS),
                 "impact": opp.get("impact", "medio"),
             })
     result["opportunities"] = normalized_opps
 
     # Store extra data inside kpis JSON for simplicity (no schema change needed)
     kpis["opportunities"] = result.get("opportunities", [])
-    kpis["team_narrative"] = result.get("team_narrative", "")
+    kpis["team_narrative"] = shorten(result.get("team_narrative") or "", 2, ANALYSIS_MAX_CHARS)
     kpis_str = json.dumps(kpis, ensure_ascii=False)
 
     return {
-        "narrative": result.get("narrative", ""),
+        "narrative": shorten(result.get("narrative") or "", 1, HEADLINE_MAX_CHARS),
         "kpis": kpis_str,
-        "client_narrative": result.get("client_narrative"),
+        "client_narrative": shorten(result.get("client_narrative") or "", 2, ANALYSIS_MAX_CHARS) or None,
     }
 
 

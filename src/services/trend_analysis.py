@@ -28,6 +28,7 @@ from src.database.models.trends_model import (
 )
 from src.database.models.working_hours_model import WorkingHours
 from src.services import trend_sources
+from src.services.text_limits import shorten
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +36,8 @@ WINDOW_DAYS = 28
 SCHEDULE_DAYS = 8
 MIN_LEAD = timedelta(hours=1)
 MAX_SUGGESTIONS = 3
+ANALYSIS_MAX_CHARS = 300
+LINE_MAX_CHARS = 160
 DAY_NAMES = ["lunes", "martes", "miercoles", "jueves", "viernes", "sabado", "domingo"]
 
 SYSTEM_PROMPT = (
@@ -43,7 +46,10 @@ SYSTEM_PROMPT = (
     "encajan con sus servicios y por que) y de 1 a 3 ideas de video que pueda grabar el mismo. "
     "Nombra los servicios reales del negocio. Cada idea lleva un guion de exactamente 3 pasos, "
     "un texto para la publicacion y, si aplica, el audio. En source_trend_urls pon solo URLs de "
-    "la lista de tendencias que justifiquen la idea. No inventes tendencias, cifras ni servicios."
+    "la lista de tendencias que justifiquen la idea. No inventes tendencias, cifras ni servicios. "
+    "Se muy breve: el analisis son 2 frases como mucho; la idea, cada paso del guion y el texto "
+    "para la publicacion son una sola frase. Ninguna frase pasa de 20 palabras. La idea principal "
+    "primero, sin introducciones ni relleno."
 )
 
 SUGGESTION_SCHEMA = {
@@ -274,7 +280,16 @@ def analyze_business(
     for draft in result.suggestions:
         sources = [url for url in draft.source_trend_urls if url in trends_by_url]
         if sources and draft.script and draft.network in business["networks"]:
-            drafts.append(draft.model_copy(update={"source_trend_urls": sources, "script": draft.script[:3]}))
+            drafts.append(
+                draft.model_copy(
+                    update={
+                        "source_trend_urls": sources,
+                        "idea": shorten(draft.idea, 1, LINE_MAX_CHARS),
+                        "script": [shorten(step, 1, LINE_MAX_CHARS) for step in draft.script[:3]],
+                        "caption_hint": shorten(draft.caption_hint, 1, LINE_MAX_CHARS),
+                    }
+                )
+            )
     drafts = drafts[: min(MAX_SUGGESTIONS, preferences.max_per_day)]
 
     insight = session.exec(
@@ -292,7 +307,7 @@ def analyze_business(
     usage = response.usage
     insight.sqlmodel_update(
         {
-            "analysis": result.analysis,
+            "analysis": shorten(result.analysis, 2, ANALYSIS_MAX_CHARS),
             "matched_services": json.dumps(result.matched_services, ensure_ascii=False),
             "trends_used": json.dumps(
                 [{key: trends_by_url[url][key] for key in ("title", "network", "url")} for url in used_urls],

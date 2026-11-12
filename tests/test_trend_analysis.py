@@ -249,6 +249,19 @@ class TestAnalyzeEndpoint:
         client.post("/internal/trends/analyze", headers=JOB_AUTH)
         assert len(suggestions(session)) == created
 
+    def test_recorta_los_textos_largos(self, client, session, claude):
+        long = "Graba el antes y el despues de un corte degradado. " * 5
+        suggestion = {**SUGGESTION, "idea": long, "script": [long, long, long], "caption_hint": long}
+        claude.beta.messages.create.return_value = claude_response(
+            {**ANALYSIS, "analysis": long, "suggestions": [suggestion]}
+        )
+        client.post("/internal/trends/analyze", headers=JOB_AUTH)
+        sentence = long.split(". ")[0] + "."
+        assert session.exec(select(TrendInsight)).one().analysis == f"{sentence} {sentence}"
+        [saved] = suggestions(session)
+        assert saved.idea == saved.caption_hint == sentence
+        assert json.loads(saved.script) == [sentence] * 3
+
     def test_relanzar_no_repite(self, client, session, claude):
         client.post("/internal/trends/analyze", headers=JOB_AUTH)
         response = client.post("/internal/trends/analyze", headers=JOB_AUTH)
