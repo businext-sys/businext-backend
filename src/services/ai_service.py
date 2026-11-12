@@ -16,6 +16,7 @@ HEADLINE_MAX_CHARS = 120
 ANALYSIS_MAX_CHARS = 240
 OPPORTUNITY_MAX_CHARS = 160
 MAX_OPPORTUNITIES = 3
+CALL_SUMMARY_MAX_CHARS = 240
 
 
 def generate_review_response(
@@ -380,6 +381,31 @@ def generate_weekly_summary(
         "kpis": kpis_str,
         "client_narrative": shorten(result.get("client_narrative") or "", 2, ANALYSIS_MAX_CHARS) or None,
     }
+
+
+def generate_call_summary(transcript: str) -> str:
+    """Resumen en español de una llamada del agente de voz: 1-2 frases a partir de la transcripción."""
+    if not client:
+        raise AIServiceError("Servicio de IA no configurado. Falta la clave de API.")
+
+    system_prompt = (
+        "Resumes llamadas telefónicas entre el agente de voz de un negocio y un cliente. "
+        "Escribe en español, en una o dos frases cortas, con la idea principal primero: "
+        "quién llamó, qué quería y cómo acabó la llamada. Sin introducciones ni relleno."
+    )
+
+    response = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Transcripción:\n{transcript}"},
+        ],
+        max_tokens=150,
+        temperature=0.3,
+        timeout=10,
+    )
+
+    return shorten(response.choices[0].message.content or "", 2, CALL_SUMMARY_MAX_CHARS)
 
 
 class AIServiceError(Exception):

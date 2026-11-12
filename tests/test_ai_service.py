@@ -51,3 +51,19 @@ def test_el_resumen_semanal_mantiene_sus_campos(openai):
     assert set(summary) == {"narrative", "kpis", "client_narrative"}
     assert summary["client_narrative"] is None
     assert json.loads(summary["kpis"])["opportunities"] == []
+
+
+def test_el_resumen_de_llamada_son_dos_frases(openai):
+    openai.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=LONG))]
+    )
+    summary = ai_service.generate_call_summary("Agent: Hola\nUser: Quiero cita")
+
+    assert summary.count(".") == 2
+    assert len(summary) <= ai_service.CALL_SUMMARY_MAX_CHARS
+
+
+def test_el_resumen_de_llamada_sin_clave_falla(monkeypatch):
+    monkeypatch.setattr(ai_service, "client", None)
+    with pytest.raises(ai_service.AIServiceError):
+        ai_service.generate_call_summary("Agent: Hola")

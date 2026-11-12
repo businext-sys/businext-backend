@@ -45,9 +45,11 @@ from src.database.models.voice_agent_model import (
     VoiceCallStats,
     VoicePhoneNumber,
 )
+from src.services.ai_service import CALL_SUMMARY_MAX_CHARS, generate_call_summary
 from src.services.availability_service import SLOT_DURATION_MINUTES, get_available_slots
 from src.services.email_service import email_request_accepted, send_email
 from src.services.retell import require_retell_signature
+from src.services.text_limits import shorten
 
 from . import public_booking
 from .assistant import BUSINESS_TIMEZONE, require_authorization_header
@@ -339,6 +341,24 @@ def _from_ms(timestamp: int | None) -> datetime | None:
     return datetime.fromtimestamp(timestamp / 1000, tz=timezone.utc).replace(tzinfo=None)
 
 
+def _call_summary(session, call: CallEventCall) -> str | None:
+    """
+    Resumen propio de la llamada, generado una sola vez desde la transcripcion.
+    Si la IA falla, el de Retell recortado: el webhook nunca falla por esto.
+    """
+    if session.exec(select(VoiceCall.summary).where(VoiceCall.call_id == call.call_id)).first():
+        return None
+    if call.transcript:
+        try:
+            summary = generate_call_summary(call.transcript)
+            if summary:
+                return summary
+        except Exception:
+            logger.exception("voice_call_summary_failed call=%s", call.call_id)
+    retell_summary = call.call_analysis.call_summary if call.call_analysis else None
+    return shorten(retell_summary, 2, CALL_SUMMARY_MAX_CHARS) if retell_summary else None
+
+
 @retell_router.post("/webhook", status_code=204)
 def call_event(body: CallEvent, session: SessionDep) -> None:
     """
@@ -365,10 +385,10 @@ def call_event(body: CallEvent, session: SessionDep) -> None:
             disconnection_reason=call.disconnection_reason,
             transcript=call.transcript,
             recording_url=call.recording_url,
+            summary=_call_summary(session, call) if business_id else None,
         )
         if call.call_analysis:
             fields.update(
-                summary=call.call_analysis.call_summary,
                 sentiment=call.call_analysis.user_sentiment,
                 successful=call.call_analysis.call_successful,
             )
