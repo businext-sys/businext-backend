@@ -208,7 +208,8 @@ de `businext/packages/shared-core` (`message_start`, `text_delta`,
 `tools.py` (registro de herramientas: cada una devuelve datos para el modelo
 y, opcionalmente, un bloque para la app) y `orchestrator.py` (bucle de un
 turno, maximo `MAX_STEPS` llamadas al modelo). Sin `OPENAI_API_KEY` responde
-503. Los tests mockean el LLM sobreescribiendo `get_assistant_llm`.
+503. Los tests mockean el LLM sobreescribiendo `get_assistant_llm`. El prompt
+pide respuestas de 1-3 frases salvo que el usuario pida detalle.
 
 Herramientas de lectura en `src/routers/assistant_tools.py`: reservas de un
 dia o rango, detalle de reserva, caja (hoy/semana/mes con el periodo
@@ -356,6 +357,13 @@ tenga `pending`. Una sugerencia sin una URL del snapshot que la
 justifique se descarta. El `publish_at` lo calcula el codigo: la hora con mas reservas
 dentro del horario general del negocio (`workinghours` sin `member_user_id`), fuera del
 horario silencioso y sin pasar de `max_per_day`.
+
+Los textos de la IA son breves por prompt y por codigo (`src/services/text_limits.py`
+recorta por frases y caracteres): el analisis de tendencias, 2 frases; la idea, cada paso
+del guion y el texto de la publicacion, una. En el resumen semanal
+(`generate_weekly_summary` en `src/services/ai_service.py`), `narrative` es un titular de
+una frase, `client_narrative` y `team_narrative` 2 frases como mucho, y hay como mucho 3
+oportunidades de una frase.
 
 Para web y movil (owner y manager): `GET /trends/insight`, `POST /trends/insight/refresh`
 (regenera el analisis de hoy y las sugerencias `pending`; 429 la segunda vez en el dia),
