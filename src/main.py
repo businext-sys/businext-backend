@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .routers import (
+    account,
     assistant,
     auth_context,
     booking_request,
@@ -76,3 +77,4 @@ app.include_router(reminders.internal_router)
 app.include_router(voice_agent.router)
 app.include_router(voice_agent.retell_router)
 app.include_router(customer_message.router)
+app.include_router(account.router)
