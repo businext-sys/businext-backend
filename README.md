@@ -62,6 +62,11 @@ SUPABASE_ANON_KEY=<anon key>
 SUPABASE_SERVICE_ROLE_KEY=<service role key>
 APP_URL=http://localhost:3000        # base de los links de invitacion
 
+# Borrado de cuentas (src/services/account_service.py): DELETE /users/me
+# cancela en Stripe las suscripciones activas del owner. Sin ella, un owner
+# con suscripcion activa no puede borrar su cuenta (500).
+STRIPE_SECRET_KEY=sk_live_...
+
 # Opcionales: la feature correspondiente degrada si faltan
 OPENAI_API_KEY=                      # src/services/ai_service.py
 OUTSCRAPER_API_KEY=                  # resenas de Google
@@ -314,6 +319,25 @@ Puesta en marcha:
    el numero al webhook (sin agente fijo).
 3. Insertar el numero en `voicephonenumber` con su `business_id` y activar el
    agente desde `PATCH /voice-agent/config`.
+
+## Borrado de cuenta
+
+`DELETE /users/me` (`src/routers/account.py`) borra la cuenta del usuario del
+JWT, como exigen App Store y Google Play. No pide suscripcion activa y
+responde 204.
+
+- **Owner**: cancela de inmediato en Stripe sus suscripciones `active`,
+  `trialing` o `past_due`; borra en una transaccion todos los datos del
+  negocio (`business_id`), sus suscripciones y su `profile`, y por ultimo su
+  usuario de Supabase Auth. Los empleados pierden el acceso (se borran sus
+  filas de `businessmember`, sus push tokens y sus horarios), pero sus
+  usuarios de Auth se conservan.
+- **Manager/employee**: borra solo su membresia, push tokens, conversaciones
+  del asistente, horarios propios, `profile` y su usuario de Auth.
+
+Si Stripe falla o falta `STRIPE_SECRET_KEY` con una suscripcion activa, no se
+borra nada (500/502). Si falla el borrado en Auth tras borrar los datos,
+responde 502; el endpoint es idempotente y la app puede reintentar.
 
 ## Decisiones de arquitectura
 
