@@ -26,6 +26,7 @@ from .routers import (
     working_hours,
 )
 from .services.expiration_service import expire_old_requests
+from .trailing_slash import TrailingSlashRewriteMiddleware
 
 
 @asynccontextmanager
@@ -50,6 +51,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(TrailingSlashRewriteMiddleware, router=app.router)
 
 
 @app.get("/health")
