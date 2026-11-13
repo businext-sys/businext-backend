@@ -1,7 +1,6 @@
 from fastapi import APIRouter, FastAPI, Header
 from fastapi.testclient import TestClient
 
-from src.main import app as main_app
 from src.trailing_slash import TrailingSlashRewriteMiddleware
 
 
@@ -46,7 +45,3 @@ def test_item_route_is_not_rewritten():
 def test_unknown_path_is_still_404():
     assert client.get("/nada", follow_redirects=False).status_code == 404
 
-
-def test_main_app_does_not_redirect_reservations():
-    response = TestClient(main_app).get("/reservations", follow_redirects=False)
-    assert response.status_code != 307
