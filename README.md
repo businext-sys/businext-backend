@@ -209,22 +209,24 @@ Despliegue actual: Render, en <https://businext-backend.onrender.com>.
 `{ conversation_id?, message }` y responde en SSE con los eventos del contrato
 de `businext/packages/shared-core` (`message_start`, `text_delta`,
 `tool_status`, `block`, `message_end`, `error`). La logica vive en
-`src/services/assistant/`: `llm.py` (OpenAI `gpt-4o-mini` en streaming),
+`src/services/assistant/`: `llm.py` (Claude Haiku 5.5 en streaming, sin thinking y con effort `low`),
 `tools.py` (registro de herramientas: cada una devuelve datos para el modelo
 y, opcionalmente, un bloque para la app) y `orchestrator.py` (bucle de un
-turno, maximo `MAX_STEPS` llamadas al modelo). Sin `OPENAI_API_KEY` responde
+turno, maximo `MAX_STEPS` llamadas al modelo). Sin `ANTHROPIC_API_KEY` responde
 503. Los tests mockean el LLM sobreescribiendo `get_assistant_llm`. El prompt
-pide respuestas de 1-3 frases salvo que el usuario pida detalle.
+pide una frase con el dato primero y actuar sin preguntar lo que se puede deducir.
 
 Herramientas de lectura en `src/routers/assistant_tools.py`: reservas de un
 dia o rango, detalle de reserva, caja (hoy/semana/mes con el periodo
-anterior), solicitudes, servicios y precios, resenas, resumen semanal y
-horario. Llaman a las mismas funciones que los endpoints, asi que aplican sus
+anterior), solicitudes, servicios y precios, resenas, resumen semanal,
+horario y huecos libres (`get_free_slots`). Llaman a las mismas funciones que los endpoints, asi que aplican sus
 reglas de acceso. «Hoy» se calcula en `Europe/Madrid`.
 
 Herramientas de escritura en `src/routers/assistant_actions.py` (crear,
 mover, cancelar, completar y revertir reservas; aceptar o rechazar
-solicitudes; registrar ingresos o gastos). No escriben: guardan una accion
+solicitudes; registrar ingresos o gastos). Crear y mover reservas comprueban el
+horario del negocio (o del profesional). Mover una reserva se aplica al momento
+y devuelve `previous_start` para deshacerlo. El resto no escriben: guardan una accion
 pendiente (`src/services/assistant/actions.py`, en memoria, caduca a los 15
 min) y devuelven un bloque `confirmation`. Solo
 `POST /assistant/actions/{action_id}/confirm` con `decision: "confirm"` la
@@ -256,11 +258,11 @@ herramientas reales. En Render se ignora (variable `RENDER`). Datos de prueba:
 
 **Evals** (`evals/`): 56 casos en espanol (`evals/cases.json`) con la
 herramienta y los parametros esperados por rol. `python -m evals.run` los
-ejecuta contra OpenAI con herramientas simuladas (sin base de datos) y
+ejecuta contra Claude con herramientas simuladas (sin base de datos) y
 mide herramienta, parametros, permisos y que ninguna escritura se de por
 hecha sin confirmar; falla por debajo del 80 % de precision o con cualquier
 violacion. En CI: `.github/workflows/assistant-evals.yml` (necesita el secret
-`OPENAI_API_KEY`).
+`ANTHROPIC_API_KEY`).
 
 Limites y observabilidad: 30 mensajes por usuario y hora y 300 por negocio y
 dia (`src/services/assistant/limits.py`, en memoria; al superarlos el chat
@@ -349,7 +351,7 @@ responde 502; el endpoint es idempotente y la app puede reintentar.
 
 En [`docs/adr/`](docs/adr/). La primera,
 [0001 — asistente conversacional](docs/adr/0001-asistente-llm.md): proveedor
-LLM (OpenAI `gpt-4o-mini`), orquestacion y contrato del chat de la app movil.
+LLM (Claude Haiku 5.5 desde la story #217; antes OpenAI `gpt-4o-mini`), orquestacion y contrato del chat de la app movil.
 [0002 — agente de voz Retell](docs/adr/0002-agente-de-voz-retell.md):
 numero → negocio, firma y modos de reserva.
 

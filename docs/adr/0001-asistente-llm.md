@@ -1,6 +1,6 @@
 # ADR 0001 — Proveedor LLM, orquestación y contrato del asistente
 
-- **Estado:** aceptado
+- **Estado:** aceptado; modelo sustituido (ver «Actualización 2026-11-13»)
 - **Fecha:** 2026-10-23
 - **Story:** businext-sys/businext-backend#19 (Fase 7, app móvil conversacional)
 
@@ -93,3 +93,21 @@ extremos.
   `Cache-Control: no-cache` y `X-Accel-Buffering: no`), comprobado en #20.
 - Los tests no llaman a OpenAI: el cliente se inyecta y se mockea; el modo
   mock determinista para E2E es businext-sys/businext#101.
+
+## Actualización 2026-11-13 — Claude Haiku 5.5
+
+Story businext-sys/businext#217. Con `gpt-4o-mini` el asistente fallaba en
+casos simples (negaba la caja al dueño, no elegía una hora libre, pedía
+confirmar varias veces), visto al grabar la demo para la revisión de Apple.
+
+- **Modelo:** Claude Haiku 5.5 (`claude-haiku-5-5`) con la Messages API en
+  streaming, `thinking` desactivado y `effort: low` para que responda rápido.
+  `ANTHROPIC_API_KEY` ya estaba en Render para las tendencias. Precio: 0,10 $ /
+  1M de entrada y 0,50 $ / 1M de salida, así que la conversación típica cuesta
+  ~0,003 $.
+- **Adaptador:** `AnthropicAssistantLLM` traduce el historial y las
+  herramientas del orquestador (que siguen en el formato de este ADR) al
+  formato de Anthropic; el bucle y el contrato no cambian.
+- **Confirmaciones:** mover una reserva se hace al momento y se deshace
+  moviéndola a `previous_start`; el resto de escrituras siguen pidiendo
+  confirmación.

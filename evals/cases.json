@@ -431,5 +431,20 @@
     "prompt": "¿qué tiempo hace mañana?",
     "role": "owner",
     "tool": null
+  },
+  {
+    "id": "c57",
+    "prompt": "¿Qué huecos libres hay mañana?",
+    "role": "owner",
+    "tool": "get_free_slots",
+    "args": {
+      "date": "{tomorrow}"
+    }
+  },
+  {
+    "id": "c58",
+    "prompt": "dame una hora libre hoy",
+    "role": "employee",
+    "tool": "get_free_slots"
   }
 ]

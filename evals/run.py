@@ -3,7 +3,7 @@ Evals del asistente (businext-backend#26).
 
     python -m evals.run [--cases evals/cases.json] [--report evals/report.json]
 
-Ejecuta cada caso contra el LLM real (OPENAI_API_KEY) con las herramientas
+Ejecuta cada caso contra el LLM real (ANTHROPIC_API_KEY) con las herramientas
 simuladas: mismos nombres, descripciones y roles que las reales, pero con
 datos fijos y sin base de datos. Mide la herramienta elegida, sus
 parametros, el respeto de permisos y que el asistente nunca de por hecha una
@@ -26,7 +26,6 @@ TODAY = date(2026, 10, 22)  # miercoles
 MIN_PRECISION = 0.8
 WRITE_TOOLS = {
     "create_reservation",
-    "reschedule_reservation",
     "cancel_reservation",
     "complete_reservation",
     "revert_reservation",
@@ -77,6 +76,10 @@ CANNED = {
         {"author": "Ana", "rating": 5, "text": "Genial", "answered": False},
         {"author": "Luis", "rating": 2, "text": "Esperé mucho", "answered": False},
     ]},
+    "reschedule_reservation": {"done": True, "summary": "La reserva de Juan pasa a otra hora.",
+                               "previous_start": f"{TODAY}T17:00"},
+    "get_free_slots": {"date": f"{TODAY}", "free_slots": [{"time": "11:00", "employee_name": "Marta"},
+                                                          {"time": "11:30", "employee_name": "Marta"}]},
     "get_weekly_summary": {"narrative": "Buena semana, más clientes que la anterior.", "kpis": {"total_income": 900}},
     "get_working_hours": [{"day": d, "open": d != "domingo", "start": "09:00", "end": "20:00"}
                           for d in ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]],
@@ -196,7 +199,7 @@ def main() -> int:
 
     llm = get_assistant_llm()
     if llm is None:
-        print("Falta OPENAI_API_KEY: no se puede ejecutar el eval.", file=sys.stderr)
+        print("Falta ANTHROPIC_API_KEY: no se puede ejecutar el eval.", file=sys.stderr)
         return 2
 
     report = evaluate(llm, json.loads(Path(args.cases).read_text()))

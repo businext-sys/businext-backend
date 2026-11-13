@@ -1,7 +1,7 @@
 name: Assistant evals
 
-# Evals del asistente contra OpenAI (businext-backend#26). Necesita el secret
-# OPENAI_API_KEY; sin el, el job lo avisa y termina sin fallar.
+# Evals del asistente contra Claude (businext-backend#26). Necesita el secret
+# ANTHROPIC_API_KEY; sin el, el job lo avisa y termina sin fallar.
 
 on:
   workflow_dispatch:
@@ -16,17 +16,17 @@ jobs:
   evals:
     runs-on: ubuntu-latest
     env:
-      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
       DATABASE_URI: sqlite://
 
     steps:
       - uses: actions/checkout@v4
 
-      - name: Comprobar OPENAI_API_KEY
+      - name: Comprobar ANTHROPIC_API_KEY
         id: key
         run: |
-          if [ -z "$OPENAI_API_KEY" ]; then
-            echo "::warning::Falta el secret OPENAI_API_KEY: no se ejecutan los evals."
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::warning::Falta el secret ANTHROPIC_API_KEY: no se ejecutan los evals."
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"

@@ -1,23 +1,26 @@
-"""Adaptador del LLM del asistente (ADR 0001: OpenAI gpt-4o-mini)."""
+"""Adaptador del LLM del asistente (ADR 0001, actualizado: Claude Haiku 5.5)."""
 
+import json
 import logging
 import os
 from collections.abc import Iterator
 from dataclasses import dataclass, field
 from typing import Protocol
 
+import anthropic
 from dotenv import load_dotenv
-from openai import OpenAI
 
 load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-MODEL = "gpt-4o-mini"
-# Precios del ADR 0001 (USD por token); revisar en https://openai.com/api/pricing
-INPUT_PRICE_PER_TOKEN = 0.15 / 1_000_000
-OUTPUT_PRICE_PER_TOKEN = 0.60 / 1_000_000
+MODEL = "claude-haiku-5-5"
+# USD por token; revisar en https://platform.claude.com/docs/en/about-claude/pricing
+INPUT_PRICE_PER_TOKEN = 0.10 / 1_000_000
+OUTPUT_PRICE_PER_TOKEN = 0.50 / 1_000_000
 REQUEST_TIMEOUT_SECONDS = 30
+MAX_TOKENS = 2048
+REFUSAL_TEXT = "No puedo ayudarte con eso."
 
 
 @dataclass
@@ -44,40 +47,78 @@ class AssistantLLM(Protocol):
     def stream(self, messages: list[dict], tools: list[dict]) -> Iterator[LLMDelta]: ...
 
 
-class OpenAIAssistantLLM:
-    def __init__(self, client: OpenAI):
+def _anthropic_tools(tools: list[dict]) -> list[dict]:
+    return [
+        {
+            "name": tool["function"]["name"],
+            "description": tool["function"]["description"],
+            "input_schema": tool["function"]["parameters"],
+        }
+        for tool in tools
+    ]
+
+
+def _anthropic_messages(messages: list[dict]) -> tuple[str, list[dict]]:
+    system = ""
+    converted: list[dict] = []
+    for message in messages:
+        role = message["role"]
+        if role == "system":
+            system = message["content"]
+        elif role == "tool":
+            result = {"type": "tool_result", "tool_use_id": message["tool_call_id"], "content": message["content"]}
+            previous = converted[-1] if converted else None
+            if previous and previous["role"] == "user" and isinstance(previous["content"], list):
+                previous["content"].append(result)
+            else:
+                converted.append({"role": "user", "content": [result]})
+        elif message.get("tool_calls"):
+            blocks: list[dict] = [{"type": "text", "text": message["content"]}] if message.get("content") else []
+            blocks += [
+                {
+                    "type": "tool_use",
+                    "id": call["id"],
+                    "name": call["function"]["name"],
+                    "input": json.loads(call["function"]["arguments"] or "{}"),
+                }
+                for call in message["tool_calls"]
+            ]
+            converted.append({"role": "assistant", "content": blocks})
+        elif message.get("content"):
+            converted.append({"role": role, "content": message["content"]})
+    return system, converted
+
+
+class AnthropicAssistantLLM:
+    def __init__(self, client: anthropic.Anthropic):
         self._client = client
 
     def stream(self, messages: list[dict], tools: list[dict]) -> Iterator[LLMDelta]:
-        response = self._client.chat.completions.create(
+        system, converted = _anthropic_messages(messages)
+        events = self._client.messages.create(
             model=MODEL,
-            messages=messages,
-            tools=tools or None,
+            max_tokens=MAX_TOKENS,
+            system=system,
+            messages=converted,
+            tools=_anthropic_tools(tools),
+            thinking={"type": "disabled"},
+            output_config={"effort": "low"},
             stream=True,
-            stream_options={"include_usage": True},
-            temperature=0.3,
         )
-        for chunk in response:
-            if chunk.usage:
-                yield LLMDelta(
-                    prompt_tokens=chunk.usage.prompt_tokens,
-                    completion_tokens=chunk.usage.completion_tokens,
-                )
-            if not chunk.choices:
-                continue
-            delta = chunk.choices[0].delta
-            yield LLMDelta(
-                text=delta.content,
-                tool_calls=[
-                    ToolCallDelta(
-                        index=call.index,
-                        id=call.id,
-                        name=call.function.name if call.function else None,
-                        arguments=(call.function.arguments or "") if call.function else "",
-                    )
-                    for call in delta.tool_calls or []
-                ],
-            )
+        for event in events:
+            if event.type == "message_start":
+                yield LLMDelta(prompt_tokens=event.message.usage.input_tokens)
+            elif event.type == "content_block_start" and event.content_block.type == "tool_use":
+                block = event.content_block
+                yield LLMDelta(tool_calls=[ToolCallDelta(index=event.index, id=block.id, name=block.name)])
+            elif event.type == "content_block_delta" and event.delta.type == "text_delta":
+                yield LLMDelta(text=event.delta.text)
+            elif event.type == "content_block_delta" and event.delta.type == "input_json_delta":
+                yield LLMDelta(tool_calls=[ToolCallDelta(index=event.index, arguments=event.delta.partial_json)])
+            elif event.type == "message_delta":
+                yield LLMDelta(completion_tokens=event.usage.output_tokens)
+                if event.delta.stop_reason == "refusal":
+                    yield LLMDelta(text=REFUSAL_TEXT)
 
 
 def get_assistant_llm() -> AssistantLLM | None:
@@ -88,7 +129,9 @@ def get_assistant_llm() -> AssistantLLM | None:
             from .mock_llm import MockAssistantLLM
 
             return MockAssistantLLM()
-    api_key = os.getenv("OPENAI_API_KEY", "")
+    api_key = os.getenv("ANTHROPIC_API_KEY", "")
     if not api_key:
         return None
-    return OpenAIAssistantLLM(OpenAI(api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS, max_retries=1))
+    return AnthropicAssistantLLM(
+        anthropic.Anthropic(api_key=api_key, timeout=REQUEST_TIMEOUT_SECONDS, max_retries=1)
+    )

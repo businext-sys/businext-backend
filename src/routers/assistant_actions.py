@@ -1,22 +1,28 @@
 """
 Herramientas de escritura del asistente (businext-backend#22).
 
-Ninguna escribe al llamarse: validan, guardan una accion pendiente y
+Casi ninguna escribe al llamarse: validan, guardan una accion pendiente y
 devuelven un bloque `confirmation`. Solo se ejecutan desde
 POST /assistant/actions/{action_id}/confirm, llamando a las mismas funciones
 que los endpoints (mismas validaciones y efectos, p. ej. el email al cliente
-al aceptar una solicitud).
+al aceptar una solicitud). La excepcion es cambiar la hora de una reserva: se
+aplica al momento y se deshace moviendola de vuelta a su hora anterior.
 """
 
+import uuid
 from datetime import datetime, timedelta
 
 from fastapi import HTTPException
 from sqlmodel import select
 
 from src.database.models.booking_request_model import BookingRequest
+from src.database.models.member_model import BusinessMember
 from src.database.models.finances_model import FinancesBase
 from src.database.models.product_model import Product
+from src.database.models.profile_model import Profile
 from src.database.models.reservation_model import ReservationBase, ReservationUpdate
+from src.database.models.working_hours_model import WorkingHours
+from src.services.availability_service import _get_hours_for_employee
 from src.services.assistant import actions
 from src.services.assistant.tools import (
     MANAGEMENT_ROLES,
@@ -89,6 +95,32 @@ def _conflict(ctx: ToolContext, start: datetime, in_charge: str, exclude_id: int
     return None
 
 
+def _member_user_id(ctx: ToolContext, name: str) -> str | None:
+    return ctx.session.exec(
+        select(BusinessMember.member_user_id)
+        .join(Profile, Profile.id == BusinessMember.member_user_id)
+        .where(BusinessMember.business_id == ctx.auth.business_id, Profile.display_name == name)
+    ).first()
+
+
+def _closed(ctx: ToolContext, start: datetime, in_charge: str) -> str | None:
+    has_hours = ctx.session.exec(
+        select(WorkingHours.id).where(WorkingHours.business_id == ctx.auth.business_id)
+    ).first()
+    if has_hours is None:
+        return None
+    end = start + timedelta(minutes=reservation.FIXED_DURATION_MINUTES)
+    blocks = _get_hours_for_employee(
+        ctx.session, ctx.auth.business_id, start.weekday(), _member_user_id(ctx, in_charge)
+    )
+    if any(b.start_time <= f"{start:%H:%M}" and f"{end:%H:%M}" <= b.end_time for b in blocks):
+        return None
+    if not blocks:
+        return f"{in_charge} no trabaja el {DAY_NAMES[start.weekday()]}."
+    hours = ", ".join(f"{b.start_time}-{b.end_time}" for b in blocks)
+    return f"A esa hora no se trabaja: el horario de {in_charge} ese día es {hours}."
+
+
 def _creator_name(ctx: ToolContext) -> str:
     return own_name(ctx) or "Owner"
 
@@ -103,6 +135,9 @@ def _create_reservation(ctx: ToolContext, args: dict) -> ToolResult:
     if ctx.auth.role == "employee":
         in_charge = _creator_name(ctx)
     customer, service = args["customer_name"], args["service"]
+    closed = _closed(ctx, start, in_charge)
+    if closed:
+        return _error(closed)
     conflict = _conflict(ctx, start, in_charge)
     if conflict:
         return _error(f"Hay un conflicto de horario: {conflict}")
@@ -138,29 +173,37 @@ def _reschedule_reservation(ctx: ToolContext, args: dict) -> ToolResult:
     if found is None:
         return _error("No existe esa reserva.")
     start = datetime.fromisoformat(args["new_start"])
+    previous = found.reservation_start_date
+    closed = _closed(ctx, start, found.in_charge)
+    if closed:
+        return _error(closed)
     conflict = _conflict(ctx, start, found.in_charge, exclude_id=found.id)
     if conflict:
         return _error(f"Hay un conflicto de horario: {conflict}")
-    reservation_id, customer = found.id, found.customer_name
-
-    def execute(exec_ctx: ToolContext) -> str:
-        reservation.update_reservation(
-            reservation_id,
-            ReservationUpdate(
-                reservation_start_date=start,
-                reservation_end_date=start + timedelta(minutes=reservation.FIXED_DURATION_MINUTES),
-                time_per_reservation=reservation.FIXED_DURATION_MINUTES,
-            ),
-            exec_ctx.session,
-            exec_ctx.auth,
-        )
-        return f"Hecho: la reserva de {customer} pasa a {_when(start)}."
-
-    return _propose(
-        ctx,
-        "Cambiar la hora de una reserva",
-        f"{customer} · {found.service}: de {_when(found.reservation_start_date)} a {_when(start)}",
-        execute,
+    reservation.update_reservation(
+        found.id,
+        ReservationUpdate(
+            reservation_start_date=start,
+            reservation_end_date=start + timedelta(minutes=reservation.FIXED_DURATION_MINUTES),
+            time_per_reservation=reservation.FIXED_DURATION_MINUTES,
+        ),
+        ctx.session,
+        ctx.auth,
+    )
+    return ToolResult(
+        data={
+            "done": True,
+            "summary": f"La reserva de {found.customer_name} pasa a {_when(start)}.",
+            "previous_start": f"{previous:%Y-%m-%dT%H:%M}",
+            "note": "Ya está hecho. Si el usuario quiere deshacerlo, vuelve a moverla a previous_start.",
+        },
+        blocks=[{
+            "type": "confirmation",
+            "action_id": str(uuid.uuid4()),
+            "title": "Reserva movida",
+            "description": f"{found.customer_name} · {found.service}: de {_when(previous)} a {_when(start)}",
+            "status": "confirmed",
+        }],
     )
 
 
@@ -307,7 +350,10 @@ DATETIME_PARAM = {"type": "string", "description": "Fecha y hora local, formato 
 
 register(Tool(
     name="create_reservation",
-    description="Propone crear una reserva. No la crea hasta que el usuario confirme en la tarjeta.",
+    description=(
+        "Propone crear una reserva. No la crea hasta que el usuario confirme en la tarjeta. "
+        "Si no dicen hora concreta, usa la primera de get_free_slots."
+    ),
     parameters={
         "type": "object",
         "properties": {
@@ -324,13 +370,13 @@ register(Tool(
 
 register(Tool(
     name="reschedule_reservation",
-    description="Propone cambiar la fecha u hora de una reserva pendiente.",
+    description="Cambia al momento la fecha u hora de una reserva pendiente, sin pedir confirmación.",
     parameters={
         "type": "object",
         "properties": {"id": ID_PARAM, "new_start": DATETIME_PARAM},
         "required": ["id", "new_start"],
     },
-    status_label="Preparando el cambio…",
+    status_label="Moviendo la reserva…",
     handler=_reschedule_reservation,
 ))
 

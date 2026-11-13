@@ -11,6 +11,7 @@ from datetime import date, timedelta
 
 from fastapi import HTTPException
 
+from src.services.availability_service import get_available_slots
 from src.services.assistant.tools import MANAGEMENT_ROLES, Tool, ToolContext, ToolResult, own_name, register
 
 from . import booking_request, finances, google_reviews, intelligence, product, reservation, working_hours
@@ -172,6 +173,12 @@ def _get_products(ctx: ToolContext, args: dict) -> ToolResult:
     return ToolResult(data=[{"name": p.name, "price": p.price, "type": p.type} for p in products])
 
 
+def _get_free_slots(ctx: ToolContext, args: dict) -> ToolResult:
+    day = _parse_date(args.get("date"), ctx.today)
+    slots = get_available_slots(ctx.session, ctx.auth.business_id, day, args.get("in_charge"))
+    return ToolResult(data={"date": day.isoformat(), "free_slots": slots[:20]})
+
+
 def _get_reviews(ctx: ToolContext, args: dict) -> ToolResult:
     page = google_reviews.get_reviews(
         ctx.session,
@@ -288,6 +295,20 @@ register(Tool(
     parameters={"type": "object", "properties": {}},
     status_label="Consultando servicios y precios…",
     handler=_get_products,
+))
+
+register(Tool(
+    name="get_free_slots",
+    description="Huecos libres de 30 minutos de un día, dentro del horario del negocio.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "date": {"type": "string", "description": "YYYY-MM-DD; por defecto, hoy"},
+            "in_charge": {"type": "string", "description": "Profesional, opcional"},
+        },
+    },
+    status_label="Buscando huecos libres…",
+    handler=_get_free_slots,
 ))
 
 register(Tool(
