@@ -17,6 +17,7 @@ from src.database.models.finances_model import Finances
 from src.database.models.product_model import Product
 from src.database.models.profile_model import Profile
 from src.database.models.reservation_model import Reservation
+from src.database.models.working_hours_model import WorkingHours
 from src.main import app
 from src.services.assistant import actions
 from src.services.assistant.tools import TOOLS, ToolContext
@@ -199,12 +200,32 @@ class TestConfirmar:
         created = session.exec(select(Reservation).where(Reservation.customer_name == "Luis")).one()
         assert created.in_charge == "Dani"
 
-        created_id = created.id
-        action_id = propose(
-            session, "reschedule_reservation", {"id": created_id, "new_start": f"{tomorrow}T13:00"}
-        ).blocks[0]["action_id"]
-        assert confirm(client, action_id).startswith("Hecho")
-        assert session.get(Reservation, created_id).reservation_start_date.hour == 13
+    def test_mover_reserva_se_hace_sin_confirmar_y_se_puede_deshacer(self, session):
+        tomorrow = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+        created = propose(session, "create_reservation", {"customer_name": "Luis", "service": "Corte", "start": f"{tomorrow}T11:00"})
+        assert created.data["pending_confirmation"]
+        reserva = session.exec(select(Reservation)).first()
+        original_start = reserva.reservation_start_date
+
+        result = propose(session, "reschedule_reservation", {"id": reserva.id, "new_start": f"{tomorrow}T13:00"})
+        assert result.data["done"] and result.blocks[0]["status"] == "confirmed"
+        assert session.get(Reservation, reserva.id).reservation_start_date.hour == 13
+
+        propose(session, "reschedule_reservation", {"id": reserva.id, "new_start": result.data["previous_start"]})
+        assert session.get(Reservation, reserva.id).reservation_start_date == original_start
+
+    def test_no_reserva_fuera_del_horario(self, session):
+        session.add_all(
+            WorkingHours(business_id=BIZ, day_of_week=day, start_time="10:00", end_time="20:00") for day in range(7)
+        )
+        session.commit()
+        tomorrow = (datetime.now(timezone.utc).date() + timedelta(days=1)).isoformat()
+        early = propose(session, "create_reservation", {"customer_name": "Mario", "service": "Corte", "start": f"{tomorrow}T08:00"})
+        assert "10:00-20:00" in early.data["error"]
+        late = propose(session, "create_reservation", {"customer_name": "Mario", "service": "Corte", "start": f"{tomorrow}T19:45"})
+        assert "error" in late.data
+        ok = propose(session, "create_reservation", {"customer_name": "Mario", "service": "Corte", "start": f"{tomorrow}T19:30"})
+        assert ok.data["pending_confirmation"]
 
     def test_aceptar_solicitud_crea_la_reserva(self, client, session):
         request_id = session.exec(select(BookingRequest)).one().id

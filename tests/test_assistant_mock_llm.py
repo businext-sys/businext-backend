@@ -16,7 +16,7 @@ from src.database.database import get_session
 from src.database.models.reservation_model import Reservation
 from src.main import app
 from src.services.assistant import e2e_seed
-from src.services.assistant.llm import OpenAIAssistantLLM, get_assistant_llm
+from src.services.assistant.llm import AnthropicAssistantLLM, get_assistant_llm
 from src.services.assistant.mock_llm import FALLBACK_TEXT, MockAssistantLLM
 
 OWNER = "owner-e2e"
@@ -102,7 +102,7 @@ def test_la_semilla_es_repetible(client):
 
 def test_el_modo_mock_no_se_activa_en_render(monkeypatch):
     monkeypatch.setenv("ASSISTANT_LLM_MODE", "mock")
-    monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-test")
     assert isinstance(get_assistant_llm(), MockAssistantLLM)
     monkeypatch.setenv("RENDER", "true")
-    assert isinstance(get_assistant_llm(), OpenAIAssistantLLM)
+    assert isinstance(get_assistant_llm(), AnthropicAssistantLLM)

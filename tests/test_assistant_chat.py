@@ -2,7 +2,7 @@
 Tests de POST /assistant/chat (businext-backend#20) con el LLM mockeado.
 
 Se sobreescriben `require_subscription` y `get_assistant_llm`: no se golpea
-Supabase ni OpenAI.
+Supabase ni Anthropic.
 """
 import json
 

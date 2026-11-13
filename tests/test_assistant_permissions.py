@@ -41,6 +41,7 @@ MATRIX = {
     "answer_booking_request": {"owner", "manager", "employee"},
     "get_products": {"owner", "manager", "employee"},
     "get_working_hours": {"owner", "manager", "employee"},
+    "get_free_slots": {"owner", "manager", "employee"},
     "get_cash_summary": {"owner", "manager"},
     "get_weekly_summary": {"owner", "manager"},
     "get_reviews": {"owner", "manager"},

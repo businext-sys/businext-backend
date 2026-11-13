@@ -16,7 +16,7 @@ from src.database.database import get_session
 from src.database.models.assistant_usage_model import AssistantUsage
 from src.main import app
 from src.services.assistant import limits
-from src.services.assistant.llm import LLMDelta, OpenAIAssistantLLM, cost_usd, get_assistant_llm
+from src.services.assistant.llm import LLMDelta, AnthropicAssistantLLM, cost_usd, get_assistant_llm
 from src.services.assistant.orchestrator import TIMEOUT_MESSAGE, TurnStats, run_turn
 from src.services.assistant.tools import ToolContext
 
@@ -142,20 +142,58 @@ def test_sin_tabla_de_uso_el_chat_sigue_y_el_endpoint_da_503(llm):
         app.dependency_overrides.clear()
 
 
-def test_el_adaptador_de_openai_lee_el_uso_del_ultimo_chunk():
-    delta = SimpleNamespace(content="Hola", tool_calls=None)
-    chunks = [
-        SimpleNamespace(choices=[SimpleNamespace(delta=delta)], usage=None),
-        SimpleNamespace(choices=[], usage=SimpleNamespace(prompt_tokens=12, completion_tokens=3)),
+def test_el_adaptador_de_anthropic_traduce_eventos_y_uso():
+    events = [
+        SimpleNamespace(type="message_start", message=SimpleNamespace(usage=SimpleNamespace(input_tokens=12))),
+        SimpleNamespace(type="content_block_start", index=0, content_block=SimpleNamespace(type="text")),
+        SimpleNamespace(type="content_block_delta", index=0, delta=SimpleNamespace(type="text_delta", text="Hola")),
+        SimpleNamespace(
+            type="content_block_start",
+            index=1,
+            content_block=SimpleNamespace(type="tool_use", id="tu_1", name="get_reservations"),
+        ),
+        SimpleNamespace(
+            type="content_block_delta",
+            index=1,
+            delta=SimpleNamespace(type="input_json_delta", partial_json='{"date": "2026-11-13"}'),
+        ),
+        SimpleNamespace(
+            type="message_delta",
+            delta=SimpleNamespace(stop_reason="tool_use"),
+            usage=SimpleNamespace(output_tokens=3),
+        ),
     ]
     seen = {}
 
     def create(**kwargs):
         seen.update(kwargs)
-        return iter(chunks)
+        return iter(events)
 
-    client = SimpleNamespace(chat=SimpleNamespace(completions=SimpleNamespace(create=create)))
-    deltas = list(OpenAIAssistantLLM(client).stream([], []))
-    assert seen["stream_options"] == {"include_usage": True}
-    assert deltas[0].text == "Hola"
-    assert (deltas[1].prompt_tokens, deltas[1].completion_tokens) == (12, 3)
+    client = SimpleNamespace(messages=SimpleNamespace(create=create))
+    messages = [
+        {"role": "system", "content": "Eres el asistente"},
+        {"role": "user", "content": "¿Qué tengo hoy?"},
+        {
+            "role": "assistant",
+            "content": None,
+            "tool_calls": [
+                {"id": "tu_0", "type": "function", "function": {"name": "get_products", "arguments": ""}}
+            ],
+        },
+        {"role": "tool", "tool_call_id": "tu_0", "content": "[]"},
+    ]
+    tools = [{"type": "function", "function": {"name": "get_products", "description": "d", "parameters": {}}}]
+    deltas = list(AnthropicAssistantLLM(client).stream(messages, tools))
+
+    assert seen["system"] == "Eres el asistente"
+    assert seen["tools"] == [{"name": "get_products", "description": "d", "input_schema": {}}]
+    assert seen["messages"][1] == {
+        "role": "assistant",
+        "content": [{"type": "tool_use", "id": "tu_0", "name": "get_products", "input": {}}],
+    }
+    assert seen["messages"][2]["content"][0]["type"] == "tool_result"
+    assert deltas[0].prompt_tokens == 12
+    assert deltas[1].text == "Hola"
+    assert (deltas[2].tool_calls[0].id, deltas[2].tool_calls[0].name) == ("tu_1", "get_reservations")
+    assert deltas[3].tool_calls[0].arguments == '{"date": "2026-11-13"}'
+    assert deltas[4].completion_tokens == 3
