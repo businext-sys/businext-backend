@@ -173,11 +173,7 @@ def _confirm_events(action_id: str, body: ConfirmActionRequest, ctx: ToolContext
     elif body.decision == "cancel":
         text = "Vale, no he hecho nada."
     else:
-        try:
-            text = action.execute(ctx)
-        except HTTPException as error:
-            ctx.session.rollback()
-            text = f"No se ha podido hacer: {error.detail}"
+        _, text = actions.run(action, ctx)
     yield {"type": "text_delta", "message_id": message_id, "delta": text}
     yield {"type": "message_end", "message_id": message_id}
 
@@ -251,9 +247,5 @@ def delete_conversation(
 
 
 def _context(auth: AuthContext, session, conversation_id: str) -> ToolContext:
-    return ToolContext(
-        auth=auth,
-        session=session,
-        today=datetime.now(BUSINESS_TIMEZONE).date(),
-        conversation_id=conversation_id,
-    )
+    now = datetime.now(BUSINESS_TIMEZONE).replace(tzinfo=None, second=0, microsecond=0)
+    return ToolContext(auth=auth, session=session, today=now.date(), conversation_id=conversation_id, now=now)

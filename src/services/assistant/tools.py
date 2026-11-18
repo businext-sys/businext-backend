@@ -2,7 +2,7 @@
 
 from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from sqlmodel import Session
@@ -17,6 +17,7 @@ class ToolContext:
     session: Session
     today: date
     conversation_id: str = ""
+    now: datetime | None = None
 
 
 @dataclass

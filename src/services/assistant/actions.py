@@ -11,6 +11,8 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 
+from fastapi import HTTPException
+
 from .tools import ToolContext
 
 ACTION_TTL = timedelta(minutes=15)
@@ -63,3 +65,26 @@ def take(action_id: str, business_id: str, user_id: str, conversation_id: str) -
             return None
         del _pending[action_id]
     return action if action.expires_at > datetime.now(timezone.utc) else None
+
+
+def latest(business_id: str, user_id: str, conversation_id: str) -> PendingAction | None:
+    """La ultima accion propuesta en esa conversacion que sigue sin responder."""
+    now = datetime.now(timezone.utc)
+    with _lock:
+        candidates = [
+            a for a in _pending.values()
+            if a.business_id == business_id
+            and a.user_id == user_id
+            and a.conversation_id == conversation_id
+            and a.expires_at > now
+        ]
+    return max(candidates, key=lambda a: a.expires_at, default=None)
+
+
+def run(action: PendingAction, ctx: ToolContext) -> tuple[bool, str]:
+    """Ejecuta una accion ya sacada con `take`: (hecha, texto para el usuario)."""
+    try:
+        return True, action.execute(ctx)
+    except HTTPException as error:
+        ctx.session.rollback()
+        return False, f"No se ha podido hacer: {error.detail}"

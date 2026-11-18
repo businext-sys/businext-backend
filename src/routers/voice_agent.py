@@ -46,10 +46,11 @@ from src.database.models.voice_agent_model import (
     VoicePhoneNumber,
 )
 from src.services.ai_service import CALL_SUMMARY_MAX_CHARS, generate_call_summary
-from src.services.availability_service import SLOT_DURATION_MINUTES, get_available_slots
+from src.services.availability_service import get_available_slots, service_duration
 from src.services.email_service import email_request_accepted, send_email
 from src.services.retell import require_retell_signature
 from src.services.text_limits import shorten
+from src.services.team_notifications import notify_reservation_change
 
 from . import public_booking
 from .assistant import BUSINESS_TIMEZONE, require_authorization_header
@@ -421,6 +422,7 @@ class ServicesArgs(BaseModel):
 class AvailabilityArgs(BaseModel):
     date: date
     employee_name: str | None = None
+    service: str | None = None
 
 
 class BookArgs(BaseModel):
@@ -471,7 +473,8 @@ def _get_services(session, business_id: str, config, call: RetellCall, args: dic
 def _check_availability(session, business_id: str, config, call: RetellCall, args: dict) -> dict:
     parsed = AvailabilityArgs(**args)
     data = public_booking.get_availability(
-        business_id, session, date_param=parsed.date.isoformat(), employee_name=_employee(parsed.employee_name)
+        business_id, session, date_param=parsed.date.isoformat(), employee_name=_employee(parsed.employee_name),
+        service=parsed.service,
     )
     # Agrupado por empleado: mas corto para el modelo que la lista de huecos.
     by_employee: dict[str, list[str]] = {}
@@ -480,11 +483,12 @@ def _check_availability(session, business_id: str, config, call: RetellCall, arg
     return {"date": data["date"], "slots": by_employee}
 
 
-def _free_slot(session, business_id: str, start: datetime, employee_name: str | None) -> dict:
+def _free_slot(session, business_id: str, start: datetime, employee_name: str | None, service: str) -> dict:
     if start.replace(tzinfo=timezone.utc) <= datetime.now(timezone.utc):
         raise FunctionError("La fecha solicitada debe ser futura")
     wanted = start.strftime("%H:%M")
-    for slot in get_available_slots(session, business_id, start.date(), employee_name):
+    duration = service_duration(session, business_id, service)
+    for slot in get_available_slots(session, business_id, start.date(), employee_name, duration):
         if slot["time"] == wanted:
             return slot
     raise FunctionError("Esa hora no está disponible. Consulta la disponibilidad y ofrece otra.")
@@ -494,7 +498,7 @@ def _book_appointment(session, business_id: str, config, call: RetellCall, args:
     parsed = BookArgs(**args)
     start = datetime.combine(parsed.date, parsed.time.replace(second=0, microsecond=0))
     client_phone = parsed.client_phone or call.from_number or ""
-    slot = _free_slot(session, business_id, start, _employee(parsed.employee_name))
+    slot = _free_slot(session, business_id, start, _employee(parsed.employee_name), parsed.service)
     # Si al cliente le da igual, la cita va al empleado del hueco libre: una
     # solicitud sin empleado no ocupa el hueco de nadie en la disponibilidad.
     employee_name = _employee(slot["employee_name"])
@@ -533,13 +537,14 @@ def _confirm_reservation(
     solicitud (`booking_request.accept_booking_request`) y el mismo email de
     reserva confirmada al cliente.
     """
+    duration = service_duration(session, business_id, parsed.service)
     reservation = Reservation(
         business_id=business_id,
         customer_name=parsed.client_name,
         in_charge=in_charge or "Owner",
         reservation_start_date=start,
-        reservation_end_date=start + timedelta(minutes=SLOT_DURATION_MINUTES),
-        time_per_reservation=SLOT_DURATION_MINUTES,
+        reservation_end_date=start + timedelta(minutes=duration),
+        time_per_reservation=duration,
         status="PENDING",
         service=parsed.service,
         customer_phone=clean_phone(client_phone),
@@ -548,6 +553,7 @@ def _confirm_reservation(
     session.add(reservation)
     session.commit()
     session.refresh(reservation)
+    notify_reservation_change(session, reservation, "created", None)
 
     biz = public_booking._get_business_or_404(session, business_id)
     location = session.get(Location, parsed.location_id) if parsed.location_id else None

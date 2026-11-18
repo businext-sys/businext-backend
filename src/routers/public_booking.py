@@ -18,6 +18,7 @@ from src.database.models.profile_model import Profile
 from src.database.models.push_token_model import PushToken
 from src.services.availability_service import (
     get_available_slots,
+    service_duration,
     get_employees_with_availability,
 )
 from src.services.email_service import (
@@ -149,8 +150,9 @@ def get_availability(
     session: SessionDep,
     date_param: str = Query(..., alias="date"),
     employee_name: str | None = None,
+    service: str | None = None,
 ):
-    """Returns available time slots for a given date and optional employee."""
+    """Start times where the service (30 min without `service`) fits, for a date and optional employee."""
     _get_business_or_404(session, business_id)
 
     try:
@@ -158,7 +160,8 @@ def get_availability(
     except ValueError:
         raise HTTPException(status_code=422, detail="Invalid date format. Use YYYY-MM-DD")
 
-    slots = get_available_slots(session, business_id, target_date, employee_name)
+    duration = service_duration(session, business_id, service)
+    slots = get_available_slots(session, business_id, target_date, employee_name, duration)
 
     return {"date": date_param, "slots": slots}
 

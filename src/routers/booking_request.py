@@ -18,6 +18,8 @@ from src.services.email_service import (
     email_request_accepted,
     email_request_rejected,
 )
+from src.services.availability_service import service_duration
+from src.services.team_notifications import notify_reservation_change
 
 router = APIRouter(prefix="/booking-requests", tags=["booking-requests"])
 
@@ -57,13 +59,14 @@ def accept_booking_request(
         raise HTTPException(status_code=409, detail="La solicitud ya fue respondida")
 
     # Create the reservation
+    duration = service_duration(session, auth.business_id, booking.service)
     reservation = Reservation(
         business_id=auth.business_id,
         customer_name=booking.client_name,
         in_charge=booking.employee_name or "Owner",
         reservation_start_date=booking.requested_date,
-        reservation_end_date=booking.requested_date + timedelta(minutes=30),
-        time_per_reservation=30,
+        reservation_end_date=booking.requested_date + timedelta(minutes=duration),
+        time_per_reservation=duration,
         status="PENDING",
         service=booking.service,
         customer_phone=clean_phone(booking.client_phone),
@@ -77,6 +80,7 @@ def accept_booking_request(
     session.add(booking)
     session.commit()
     session.refresh(reservation)
+    notify_reservation_change(session, reservation, "created", auth.user_id)
 
     # Send email to client
     biz = session.exec(

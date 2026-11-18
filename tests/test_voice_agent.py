@@ -167,7 +167,7 @@ class TestFunctions:
 
     def test_disponibilidad_real(self, client):
         data = function(client, "check_availability", {"date": TOMORROW.isoformat()}).json()
-        assert data["slots"] == {"Marta": ["09:00", "09:30", "10:00", "10:30"]}
+        assert data["slots"] == {"Marta": ["09:00", "09:15", "09:30", "09:45", "10:00", "10:15", "10:30"]}
 
     def test_modo_solicitud_crea_una_solicitud(self, client, session):
         data = function(client, "book_appointment", BOOKING).json()

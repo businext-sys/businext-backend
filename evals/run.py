@@ -14,7 +14,7 @@ import argparse
 import json
 import re
 import sys
-from datetime import date, timedelta
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 
 from src.api.auth import AccessCapabilities, AuthContext
@@ -23,6 +23,7 @@ from src.services.assistant.orchestrator import TurnStats, run_turn
 from src.services.assistant.tools import TOOLS, Tool, ToolContext, ToolResult
 
 TODAY = date(2026, 10, 22)  # miercoles
+NOW = datetime.combine(TODAY, time(11, 10))
 MIN_PRECISION = 0.8
 WRITE_TOOLS = {
     "create_reservation",
@@ -37,9 +38,11 @@ DONE_CLAIM = re.compile(
     r"(reserva|cita|solicitud|gasto|ingreso) (cancelada|creada|registrad[ao]|movida|completada|aceptada|rechazada))\b",
     re.IGNORECASE,
 )
+LEAKED_FORMAT = re.compile(r"\[tarjeta|\(Tarjeta|\{\"|action_id", re.IGNORECASE)
 
 PLACEHOLDERS = {
     "today": TODAY.isoformat(),
+    "now": f"{NOW:%Y-%m-%dT%H:%M}",
     "tomorrow": (TODAY + timedelta(days=1)).isoformat(),
     "day_after_tomorrow": (TODAY + timedelta(days=2)).isoformat(),
     "friday": (TODAY + timedelta(days=(4 - TODAY.weekday()) % 7)).isoformat(),
@@ -81,6 +84,12 @@ CANNED = {
     "get_free_slots": {"date": f"{TODAY}", "free_slots": [{"time": "11:00", "employee_name": "Marta"},
                                                           {"time": "11:30", "employee_name": "Marta"}]},
     "get_weekly_summary": {"narrative": "Buena semana, más clientes que la anterior.", "kpis": {"total_income": 900}},
+    "find_customers": [{"name": "Jairo", "phone": "600123123", "email": "jairo@example.com",
+                        "last_visit": f"{TODAY - timedelta(days=20)}T10:00:00"}],
+    "confirm_pending_action": {"done": True, "summary": "Hecho: reserva de Juan completada y cobro registrado."},
+    "update_reservation_contact": {"done": True, "summary": "Contacto de Juan guardado."},
+    "mark_no_show": {"done": True, "summary": "Juan marcado como «no vino».",
+                     "note": "Ya está hecho. Si el usuario quiere deshacerlo, vuelve a llamar con undo=true."},
     "get_working_hours": [{"day": d, "open": d != "domingo", "start": "09:00", "end": "20:00"}
                           for d in ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]],
 }
@@ -139,8 +148,8 @@ def _matches(expected, actual) -> bool:
 def run_case(llm, case: dict) -> dict:
     calls: list[tuple[str, dict]] = []
     stats = TurnStats()
-    ctx = ToolContext(auth=_auth(case["role"]), session=None, today=TODAY, conversation_id="eval")
-    events = list(run_turn(llm, ctx, _stub_tools(calls), "eval", [], case["prompt"], stats=stats))
+    ctx = ToolContext(auth=_auth(case["role"]), session=None, today=TODAY, conversation_id="eval", now=NOW)
+    events = list(run_turn(llm, ctx, _stub_tools(calls), "eval", case.get("history", []), case["prompt"], stats=stats))
     text = "".join(e["delta"] for e in events if e["type"] == "text_delta")
 
     expected = case["tool"]
@@ -163,6 +172,7 @@ def run_case(llm, case: dict) -> dict:
         "args_ok": args_ok,
         "permission_violation": bool(stats.denied_tools),
         "claims_done": wrote and bool(DONE_CLAIM.search(text)),
+        "leaked_format": bool(LEAKED_FORMAT.search(text)),
         "error": stats.error,
     }
 
@@ -182,11 +192,15 @@ def evaluate(llm, cases: list[dict]) -> dict:
         "args_precision": round(sum(r["args_ok"] for r in results) / len(results), 3),
         "permission_violations": [r["id"] for r in results if r["permission_violation"]],
         "writes_claimed_done": [r["id"] for r in results if r["claims_done"]],
+        "leaked_format": [r["id"] for r in results if r["leaked_format"]],
         "by_tool": by_tool,
         "failures": [r for r in results if not (r["tool_ok"] and r["args_ok"])],
     }
     report["passed"] = (
-        precision >= MIN_PRECISION and not report["permission_violations"] and not report["writes_claimed_done"]
+        precision >= MIN_PRECISION
+        and not report["permission_violations"]
+        and not report["writes_claimed_done"]
+        and not report["leaked_format"]
     )
     return report
 
@@ -209,6 +223,7 @@ def main() -> int:
         print(f"  {tool:<24} {entry['tool_ok']}/{entry['cases']} herramienta · {entry['args_ok']}/{entry['cases']} parámetros")
     print(f"Permisos violados: {report['permission_violations'] or 'ninguno'}")
     print(f"Escrituras dadas por hechas: {report['writes_claimed_done'] or 'ninguna'}")
+    print(f"Formato interno filtrado: {report['leaked_format'] or 'ninguno'}")
     return 0 if report["passed"] else 1
 
 
