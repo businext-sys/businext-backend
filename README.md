@@ -127,7 +127,9 @@ En la practica:
   con el MCP de Supabase) y la de mensajes a clientes en riesgo
   (`docs/sql/185-customer-message.sql`). Las columnas nuevas tambien: el
   contacto del cliente en `reservation` (`docs/sql/181-reservation-contact.sql`)
-  y los recordatorios de citas (`docs/sql/183-reminders.sql`).
+  y los recordatorios de citas (`docs/sql/183-reminders.sql`). Los avisos al
+  equipo y la duracion de los servicios (`docs/sql/220-team-notifications.sql`):
+  sin la columna `product.duration_minutes` fallan las rutas que leen productos.
 - Activa RLS en cada tabla nueva (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`,
   sin politicas): el backend no lo necesita, pero sin RLS la API publica de
   Supabase expone la tabla con la anon key.
@@ -219,24 +221,36 @@ pide una frase con el dato primero y actuar sin preguntar lo que se puede deduci
 Herramientas de lectura en `src/routers/assistant_tools.py`: reservas de un
 dia o rango, detalle de reserva, caja (hoy/semana/mes con el periodo
 anterior), solicitudes, servicios y precios, resenas, resumen semanal,
-horario y huecos libres (`get_free_slots`). Llaman a las mismas funciones que los endpoints, asi que aplican sus
+horario, huecos libres (`get_free_slots`, con `service` opcional para su
+duracion) y clientes conocidos (`find_customers`). Llaman a las mismas funciones que los endpoints, asi que aplican sus
 reglas de acceso. «Hoy» se calcula en `Europe/Madrid`.
 
 Herramientas de escritura en `src/routers/assistant_actions.py` (crear,
-mover, cancelar, completar y revertir reservas; aceptar o rechazar
-solicitudes; registrar ingresos o gastos). Crear y mover reservas comprueban el
-horario del negocio (o del profesional). Mover una reserva se aplica al momento
-y devuelve `previous_start` para deshacerlo. El resto no escriben: guardan una accion
+mover, cancelar, completar y revertir reservas; marcar «no vino»; guardar el
+contacto del cliente; aceptar o rechazar solicitudes; registrar ingresos o
+gastos). Crear y mover reservas comprueban el horario del negocio (o del
+profesional) y el solape con otras citas del encargado, con la duracion del
+servicio. Una reserva para «ahora» (±15 min de la hora actual, que va en el
+prompt) solo necesita empezar dentro del horario. `create_reservation` acepta
+`customer_phone`, `customer_email` (sin ellos, los de la ultima reserva del
+cliente con el mismo nombre; sin ninguno, el asistente pide el email para los
+recordatorios) y `completed: true`, que la crea ya completada y con su cobro en
+una sola tarjeta. Mover una reserva, marcar «no vino» (`mark_no_show`, con
+`undo: true` para deshacerlo) y guardar el contacto se aplican al momento. El resto no escriben: guardan una accion
 pendiente (`src/services/assistant/actions.py`, en memoria, caduca a los 15
 min) y devuelven un bloque `confirmation`. Solo
 `POST /assistant/actions/{action_id}/confirm` con `decision: "confirm"` la
 ejecuta, una vez, llamando a la funcion del endpoint correspondiente; el
-resultado o el error de negocio vuelve en SSE. Un reinicio del proceso
+resultado o el error de negocio vuelve en SSE. Si el usuario confirma por
+escrito («sí», «vale»), `confirm_pending_action` ejecuta la misma accion por la
+misma ruta y devuelve la tarjeta con `status: "confirmed"`. Un reinicio del proceso
 invalida las acciones pendientes.
 
 Historial (`src/services/assistant/history.py`): cada turno se guarda en
 `assistantconversation`/`assistantmessage`, aislado por negocio y usuario, y
-al reanudar se envian al modelo los ultimos 20 mensajes. Endpoints:
+al reanudar se envian al modelo los ultimos 20 mensajes, con cada tarjeta
+resumida en una linea (`(Tarjeta «Completar reserva»: … — pendiente de
+confirmar, id …)`), nunca en JSON. Endpoints:
 `GET /assistant/conversations`, `GET` y `DELETE /assistant/conversations/{id}`.
 **Las tablas se crean a mano** con
 [`docs/sql/024-assistant-conversations.sql`](docs/sql/024-assistant-conversations.sql)
@@ -256,11 +270,12 @@ herramientas reales. En Render se ignora (variable `RENDER`). Datos de prueba:
 `python -m src.services.assistant.e2e_seed --business-id <id del owner>`
 (borra y recrea solo los datos «E2E» de ese negocio; solo en bases de prueba).
 
-**Evals** (`evals/`): 56 casos en espanol (`evals/cases.json`) con la
+**Evals** (`evals/`): 66 casos en espanol (`evals/cases.json`) con la
 herramienta y los parametros esperados por rol. `python -m evals.run` los
 ejecuta contra Claude con herramientas simuladas (sin base de datos) y
-mide herramienta, parametros, permisos y que ninguna escritura se de por
-hecha sin confirmar; falla por debajo del 80 % de precision o con cualquier
+mide herramienta, parametros, permisos, que ninguna escritura se de por
+hecha sin confirmar y que la respuesta no filtre JSON, ids ni resumenes de
+tarjetas; un caso puede traer `history`. Falla por debajo del 80 % de precision o con cualquier
 violacion. En CI: `.github/workflows/assistant-evals.yml` (necesita el secret
 `ANTHROPIC_API_KEY`).
 
@@ -280,12 +295,72 @@ employee solo ve y gestiona sus reservas (las de su `Profile.display_name`).
 
 | Herramienta | owner | manager | employee |
 |---|---|---|---|
-| reservas: consultar, crear, mover, cancelar, completar | ✅ | ✅ | solo las suyas |
+| reservas: consultar, crear, mover, cancelar, completar, «no vino», contacto | ✅ | ✅ | solo las suyas |
+| clientes conocidos, confirmar por escrito | ✅ | ✅ | ✅ |
 | revertir reserva completada | ✅ | ❌ | ❌ |
 | solicitudes: consultar, aceptar, rechazar | ✅ | ✅ | ✅ |
 | servicios y precios, horario | ✅ | ✅ | ✅ |
 | caja, resumen semanal, resenas | ✅ | ✅ | ❌ |
 | registrar ingreso o gasto | ✅ | ✅ | ❌ |
+
+## Clientes
+
+No hay tabla de clientes: se deducen de las reservas, agrupando por nombre sin
+mayusculas ni espacios en los extremos (`src/services/customer_service.py`).
+Ambos endpoints usan la misma autenticacion que `/reservations` (negocio del
+usuario):
+
+- `GET /customers?q=<texto>&limit=10` (limit 1-50): `[{name, phone, email,
+  last_visit}]` cuyo nombre, email o telefono contiene `q`, con el telefono y el
+  email no vacios mas recientes, ordenados por su reserva mas reciente.
+  `last_visit` es la ultima reserva ya pasada en la que vino (`null` si solo
+  tiene reservas futuras). Lo usa el formulario de reservas del movil.
+- `GET /customers/detail?name=<nombre>`: `{name, phone, email, visits,
+  no_shows, total_spent, last_visit, next_reservation, reservations}`, con
+  `visits` las reservas `COMPLETED`, `no_shows` las `NO_SHOW`, `total_spent`
+  los ingresos ligados a sus reservas y las 20 ultimas reservas
+  (`{id, start, service, in_charge, status}`). 404 si no hay ninguna.
+
+## Reservas: duracion y «no vino»
+
+Estados de una reserva: `PENDING`, `COMPLETED` y `NO_SHOW` (otro valor da
+422). `NO_SHOW` solo se pone desde `PENDING`, no cuenta como cobro, no ocupa
+hueco en la disponibilidad, no recibe recordatorio y vuelve a `PENDING` con
+`POST /reservations/{id}/revert` (owner) o un `PATCH` con `status: "PENDING"`.
+`GET /reservations` devuelve las `NO_SHOW` de hoy, como las `COMPLETED`.
+
+Cada producto tiene `duration_minutes` (5-480, 30 por defecto). Al crear una
+reserva por cualquier via sin `time_per_reservation`, se usa la duracion del
+servicio con ese nombre en el catalogo (30 si no esta) y `reservation_end_date`
+es inicio + duracion; un `time_per_reservation` explicito se respeta. Mover una
+reserva conserva su duracion. `get_available_slots` devuelve horas de inicio
+cada 15 min donde la duracion cabe entera en el horario sin solapar las citas
+del encargado (con su inicio y fin reales) ni las solicitudes pendientes;
+`GET /public/book/{business_id}/availability?date=&employee_name=&service=`,
+`check_availability` del agente de voz y `get_free_slots` aceptan `service`
+(sin el, 30 min).
+
+## Avisos al equipo
+
+`src/services/team_notifications.py` envia por Expo Push, solo a miembros
+activos con token (el owner y los `businessmember` activos), con horas de pared
+de `Europe/Madrid`:
+
+| Aviso | A quien | Cuando | `data` |
+|---|---|---|---|
+| Proxima cita («10:30 · Juan», cuerpo el servicio) | encargado (por `display_name`; si no, el owner) | `upcoming_minutes` antes | `{type: "upcoming", reservation_id}` |
+| Resumen de la manana («Hoy 8 citas, primera a las 10:00») | cada miembro; el employee solo las suyas | a su `daily_summary_hour`, si tiene citas | `{type: "daily_summary", date}` |
+| Cambios (crear, cancelar, mover o cambiar encargado) | encargado y owner, salvo quien lo hizo | al momento | `{type: "reservation_changed", reservation_id, date}` |
+| Cierre del dia («3 citas de hoy siguen pendientes…») | owner y managers | 30 min tras el cierre del horario general (21:00 sin horario) | `{type: "day_close", date}` |
+
+Los cambios salen desde las mismas funciones de los endpoints (web, app,
+asistente, aceptar solicitudes y agente de voz en modo confirmar). Los
+programados los lanza cada minuto `notifications_loop` en el `lifespan` de
+`main.py`, con un `pg_try_advisory_lock` para que solo corra una instancia; cada
+envio deja antes una fila unica en `notificationlog` (usuario, tipo, clave), asi
+que nunca se repite. Cada usuario elige con `GET`/`PUT /notification-preferences`
+(`{upcoming, upcoming_minutes, daily_summary, daily_summary_hour,
+reservation_changes, day_close}`; sin fila, todo activado, 15 min y 9 h).
 
 ## Agente de voz (Retell)
 
@@ -398,7 +473,8 @@ una frase, `client_narrative` y `team_narrative` 2 frases como mucho, y hay como
 oportunidades de una frase.
 
 Para web y movil (owner y manager): `GET /trends/insight`, `POST /trends/insight/refresh`
-(regenera el analisis de hoy y las sugerencias `pending`; 429 la segunda vez en el dia),
+(regenera el analisis de hoy y las sugerencias `pending`; 429 la segunda vez en el dia; si aun no
+hay tendencias de hoy, devuelve el ultimo analisis sin gastar el refresco),
 `GET /trends/suggestions?status=` y `PATCH /trends/suggestions/{id}` (`opened`,
 `dismissed` o `published`).
 

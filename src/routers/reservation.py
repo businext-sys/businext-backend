@@ -3,6 +3,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlmodel import select, or_, and_
 from ..database.database import SessionDep
 from ..database.models.reservation_model import (
+    RESERVATION_STATUSES,
     Reservation,
     ReservationPublic,
     ReservationBase,
@@ -12,6 +13,8 @@ from ..database.models.finances_model import Finances
 from ..database.models.member_model import BusinessMember
 from ..database.models.profile_model import Profile
 from src.api.auth import AuthContext, require_subscription, require_owner
+from src.services.availability_service import service_duration
+from src.services.team_notifications import notify_reservation_change
 
 router = APIRouter(
     prefix="/reservations",
@@ -25,7 +28,7 @@ def get_reservations(
     session: SessionDep,
     auth: AuthContext = Depends(require_subscription),
 ):
-    """Return PENDING reservations from the last 7 days onward + COMPLETED from today."""
+    """Return PENDING reservations from the last 7 days onward + COMPLETED and NO_SHOW from today."""
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     week_ago = today_start - timedelta(days=7)
@@ -40,7 +43,7 @@ def get_reservations(
                     Reservation.reservation_start_date >= week_ago,
                 ),
                 and_(
-                    Reservation.status == "COMPLETED",
+                    Reservation.status.in_(["COMPLETED", "NO_SHOW"]),
                     Reservation.reservation_start_date >= today_start,
                 ),
             )
@@ -64,7 +67,7 @@ def get_reservation_by_id(
     return reservation
 
 
-FIXED_DURATION_MINUTES = 30
+INVALID_STATUS = HTTPException(status_code=422, detail=f"Estado no válido: usa {', '.join(RESERVATION_STATUSES)}")
 
 
 def _get_valid_in_charge_names(session, business_id: str) -> set[str]:
@@ -99,10 +102,13 @@ def create_reservation(
     session: SessionDep,
     auth: AuthContext = Depends(require_subscription),
 ):
+    if reservation.status not in RESERVATION_STATUSES:
+        raise INVALID_STATUS
     reservation_data = reservation.model_dump()
     reservation_data["business_id"] = auth.business_id
-    reservation_data["time_per_reservation"] = FIXED_DURATION_MINUTES
-    reservation_data["reservation_end_date"] = reservation.reservation_start_date + timedelta(minutes=FIXED_DURATION_MINUTES)
+    duration = reservation.time_per_reservation or service_duration(session, auth.business_id, reservation.service)
+    reservation_data["time_per_reservation"] = duration
+    reservation_data["reservation_end_date"] = reservation.reservation_start_date + timedelta(minutes=duration)
 
     # Validate in_charge against active team members
     if reservation.in_charge:
@@ -117,6 +123,7 @@ def create_reservation(
     session.add(reservation_obj)
     session.commit()
     session.refresh(reservation_obj)
+    notify_reservation_change(session, reservation_obj, "created", auth.user_id)
     return reservation_obj
 
 
@@ -141,16 +148,36 @@ def update_reservation(
     # Prevent double-completing: only allow PENDING → COMPLETED
     reservation_data = reservation.model_dump(exclude_unset=True)
     new_status = reservation_data.get("status")
+    if new_status is not None and new_status not in RESERVATION_STATUSES:
+        raise INVALID_STATUS
     if new_status == "COMPLETED" and reservation_db.status != "PENDING":
         raise HTTPException(
             status_code=409,
             detail="Solo se pueden completar reservas pendientes",
         )
+    if new_status == "NO_SHOW" and reservation_db.status != "PENDING":
+        raise HTTPException(
+            status_code=409,
+            detail="Solo se puede marcar como «no vino» una reserva pendiente",
+        )
 
+    if reservation_data.keys() & {"reservation_start_date", "service", "time_per_reservation"}:
+        start = reservation_data.get("reservation_start_date") or reservation_db.reservation_start_date
+        duration = reservation_data.get("time_per_reservation") or (
+            service_duration(session, auth.business_id, reservation_data.get("service"))
+            if reservation_data.get("service")
+            else reservation_db.time_per_reservation
+        )
+        reservation_data["time_per_reservation"] = duration
+        reservation_data["reservation_end_date"] = start + timedelta(minutes=duration)
+
+    previous = (reservation_db.reservation_start_date, reservation_db.in_charge)
     reservation_db.sqlmodel_update(reservation_data)
     session.add(reservation_db)
     session.commit()
     session.refresh(reservation_db)
+    if (reservation_db.reservation_start_date, reservation_db.in_charge) != previous:
+        notify_reservation_change(session, reservation_db, "moved", auth.user_id)
     return reservation_db
 
 
@@ -170,8 +197,10 @@ def delete_reservation(
             detail="No se puede eliminar una reserva ya completada",
         )
 
+    cancelled = reservation.model_copy()
     session.delete(reservation)
     session.commit()
+    notify_reservation_change(session, cancelled, "cancelled", auth.user_id)
     return {"Reservation deleted": True}
 
 
@@ -181,15 +210,15 @@ def revert_reservation(
     session: SessionDep,
     auth: AuthContext = Depends(require_owner),
 ):
-    """Revert a COMPLETED reservation back to PENDING and delete its linked finance."""
+    """Revert a COMPLETED or NO_SHOW reservation back to PENDING and delete its linked finance."""
     reservation = session.get(Reservation, reservation_id)
     if not reservation or reservation.business_id != auth.business_id:
         raise HTTPException(status_code=404, detail="Reservation not found")
 
-    if reservation.status != "COMPLETED":
+    if reservation.status not in ("COMPLETED", "NO_SHOW"):
         raise HTTPException(
             status_code=409,
-            detail="Solo se pueden revertir reservas completadas",
+            detail="Solo se pueden revertir reservas completadas o marcadas como «no vino»",
         )
 
     # Delete linked finance record

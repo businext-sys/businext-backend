@@ -523,5 +523,24 @@
       "id": 12,
       "customer_email": "juan@example.com"
     }
+  },
+  {
+    "id": "c65",
+    "prompt": "Juan no ha venido, márcalo",
+    "role": "employee",
+    "tool": "mark_no_show",
+    "args": {
+      "reservation_id": 12
+    }
+  },
+  {
+    "id": "c66",
+    "prompt": "¿a qué hora puedo meter un tinte mañana?",
+    "role": "owner",
+    "tool": "get_free_slots",
+    "args": {
+      "date": "{tomorrow}",
+      "service": "Tinte"
+    }
   }
 ]

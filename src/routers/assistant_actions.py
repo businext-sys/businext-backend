@@ -25,7 +25,7 @@ from src.database.models.product_model import Product
 from src.database.models.profile_model import Profile
 from src.database.models.reservation_model import ReservationBase, ReservationUpdate, clean_phone
 from src.database.models.working_hours_model import WorkingHours
-from src.services.availability_service import _get_hours_for_employee
+from src.services.availability_service import _get_hours_for_employee, service_duration
 from src.services.customer_service import known_contact
 from src.services.assistant import actions
 from src.services.assistant.tools import (
@@ -85,9 +85,11 @@ def _find_reservation(ctx: ToolContext, reservation_id) -> object | None:
     return found
 
 
-def _conflict(ctx: ToolContext, start: datetime, in_charge: str, exclude_id: int | None = None) -> str | None:
+def _conflict(
+    ctx: ToolContext, start: datetime, in_charge: str, duration: int, exclude_id: int | None = None
+) -> str | None:
     """Misma regla que `detectReservationConflict` de shared-core: mismo encargado, horarios solapados."""
-    end = start + timedelta(minutes=reservation.FIXED_DURATION_MINUTES)
+    end = start + timedelta(minutes=duration)
     try:
         existing = reservation.get_reservations(ctx.session, ctx.auth)
     except HTTPException:
@@ -111,13 +113,13 @@ def _member_user_id(ctx: ToolContext, name: str) -> str | None:
     ).first()
 
 
-def _closed(ctx: ToolContext, start: datetime, in_charge: str, walk_in: bool = False) -> str | None:
+def _closed(ctx: ToolContext, start: datetime, in_charge: str, duration: int, walk_in: bool = False) -> str | None:
     has_hours = ctx.session.exec(
         select(WorkingHours.id).where(WorkingHours.business_id == ctx.auth.business_id)
     ).first()
     if has_hours is None:
         return None
-    end = start + timedelta(minutes=reservation.FIXED_DURATION_MINUTES)
+    end = start + timedelta(minutes=duration)
     blocks = _get_hours_for_employee(
         ctx.session, ctx.auth.business_id, start.weekday(), _member_user_id(ctx, in_charge)
     )
@@ -191,10 +193,11 @@ def _create_reservation(ctx: ToolContext, args: dict) -> ToolResult:
     customer, service = args["customer_name"].strip(), args["service"]
     completed = bool(args.get("completed"))
     walk_in = ctx.now is not None and abs(start - ctx.now) <= WALK_IN_WINDOW
-    closed = _closed(ctx, start, in_charge, walk_in=walk_in)
+    duration = service_duration(ctx.session, ctx.auth.business_id, service)
+    closed = _closed(ctx, start, in_charge, duration, walk_in=walk_in)
     if closed:
         return _error(closed)
-    conflict = _conflict(ctx, start, in_charge)
+    conflict = _conflict(ctx, start, in_charge, duration)
     if conflict:
         return _error(f"Hay un conflicto de horario: {conflict}")
     phone, email = _customer_contact(ctx, customer, args)
@@ -203,8 +206,7 @@ def _create_reservation(ctx: ToolContext, args: dict) -> ToolResult:
             customer_name=customer,
             in_charge=in_charge,
             reservation_start_date=start,
-            reservation_end_date=start,
-            time_per_reservation=reservation.FIXED_DURATION_MINUTES,
+            time_per_reservation=duration,
             status="PENDING",
             service=service,
             customer_phone=phone,
@@ -214,7 +216,7 @@ def _create_reservation(ctx: ToolContext, args: dict) -> ToolResult:
         return _error("El email del cliente no es válido.")
 
     def execute(exec_ctx: ToolContext) -> str:
-        if _conflict(exec_ctx, start, in_charge):
+        if _conflict(exec_ctx, start, in_charge, duration):
             raise HTTPException(status_code=409, detail="Ese hueco ya se ha ocupado.")
         created = reservation.create_reservation(new_reservation, exec_ctx.session, exec_ctx.auth)
         if completed:
@@ -238,19 +240,15 @@ def _reschedule_reservation(ctx: ToolContext, args: dict) -> ToolResult:
         return _error("No existe esa reserva.")
     start = datetime.fromisoformat(args["new_start"])
     previous = found.reservation_start_date
-    closed = _closed(ctx, start, found.in_charge)
+    closed = _closed(ctx, start, found.in_charge, found.time_per_reservation)
     if closed:
         return _error(closed)
-    conflict = _conflict(ctx, start, found.in_charge, exclude_id=found.id)
+    conflict = _conflict(ctx, start, found.in_charge, found.time_per_reservation, exclude_id=found.id)
     if conflict:
         return _error(f"Hay un conflicto de horario: {conflict}")
     reservation.update_reservation(
         found.id,
-        ReservationUpdate(
-            reservation_start_date=start,
-            reservation_end_date=start + timedelta(minutes=reservation.FIXED_DURATION_MINUTES),
-            time_per_reservation=reservation.FIXED_DURATION_MINUTES,
-        ),
+        ReservationUpdate(reservation_start_date=start),
         ctx.session,
         ctx.auth,
     )
@@ -344,6 +342,39 @@ def _update_reservation_contact(ctx: ToolContext, args: dict) -> ToolResult:
         ctx.session.rollback()
         return _error(str(error.detail))
     return ToolResult(data={"done": True, "summary": f"Contacto de {found.customer_name} guardado."})
+
+
+def _mark_no_show(ctx: ToolContext, args: dict) -> ToolResult:
+    found = _find_reservation(ctx, args["reservation_id"])
+    if found is None:
+        return _error("No existe esa reserva.")
+    undo = bool(args.get("undo"))
+    try:
+        reservation.update_reservation(
+            found.id,
+            ReservationUpdate(status="PENDING" if undo else "NO_SHOW", time_per_reservation=found.time_per_reservation),
+            ctx.session,
+            ctx.auth,
+        )
+    except HTTPException as error:
+        ctx.session.rollback()
+        return _error(str(error.detail))
+    if undo:
+        return ToolResult(data={"done": True, "summary": f"La reserva de {found.customer_name} vuelve a estar pendiente."})
+    return ToolResult(
+        data={
+            "done": True,
+            "summary": f"{found.customer_name} marcado como «no vino».",
+            "note": "Ya está hecho. Si el usuario quiere deshacerlo, vuelve a llamar con undo=true.",
+        },
+        blocks=[{
+            "type": "confirmation",
+            "action_id": str(uuid.uuid4()),
+            "title": "No vino",
+            "description": f"{found.customer_name} · {found.service}, {_when(found.reservation_start_date)}",
+            "status": "confirmed",
+        }],
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -506,6 +537,21 @@ register(Tool(
     },
     status_label="Guardando el contacto…",
     handler=_update_reservation_contact,
+))
+
+register(Tool(
+    name="mark_no_show",
+    description="Marca al momento que el cliente de una reserva pendiente no vino, sin pedir confirmación. Con undo=true la devuelve a pendiente.",
+    parameters={
+        "type": "object",
+        "properties": {
+            "reservation_id": ID_PARAM,
+            "undo": {"type": "boolean", "description": "true para deshacer un «no vino»"},
+        },
+        "required": ["reservation_id"],
+    },
+    status_label="Marcando la reserva…",
+    handler=_mark_no_show,
 ))
 
 register(Tool(

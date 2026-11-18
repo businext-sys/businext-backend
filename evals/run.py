@@ -88,6 +88,8 @@ CANNED = {
                         "last_visit": f"{TODAY - timedelta(days=20)}T10:00:00"}],
     "confirm_pending_action": {"done": True, "summary": "Hecho: reserva de Juan completada y cobro registrado."},
     "update_reservation_contact": {"done": True, "summary": "Contacto de Juan guardado."},
+    "mark_no_show": {"done": True, "summary": "Juan marcado como «no vino».",
+                     "note": "Ya está hecho. Si el usuario quiere deshacerlo, vuelve a llamar con undo=true."},
     "get_working_hours": [{"day": d, "open": d != "domingo", "start": "09:00", "end": "20:00"}
                           for d in ["lunes", "martes", "miércoles", "jueves", "viernes", "sábado", "domingo"]],
 }

@@ -17,6 +17,7 @@ from .routers import (
     google_reviews,
     intelligence,
     location,
+    notification_preferences,
     product,
     public_booking,
     push_token,
@@ -27,6 +28,7 @@ from .routers import (
     working_hours,
 )
 from .services.expiration_service import expire_old_requests
+from .services.team_notifications import notifications_loop
 from .trailing_slash import TrailingSlashRewriteMiddleware
 
 
@@ -34,8 +36,10 @@ from .trailing_slash import TrailingSlashRewriteMiddleware
 async def lifespan(app: FastAPI):
     # Start background task for expiring old booking requests
     task = asyncio.create_task(expire_old_requests())
+    notifications = asyncio.create_task(notifications_loop())
     yield
     task.cancel()
+    notifications.cancel()
 
 
 app = FastAPI(lifespan=lifespan)
@@ -73,6 +77,7 @@ app.include_router(public_booking.router)
 app.include_router(booking_request.router)
 app.include_router(location.router)
 app.include_router(push_token.router)
+app.include_router(notification_preferences.router)
 app.include_router(assistant.router)
 app.include_router(trends.router)
 app.include_router(trends.internal_router)

@@ -52,6 +52,7 @@ MATRIX = {
     "complete_reservation": {"owner", "manager", "employee"},
     "update_reservation_contact": {"owner", "manager", "employee"},
     "confirm_pending_action": {"owner", "manager", "employee"},
+    "mark_no_show": {"owner", "manager", "employee"},
     "revert_reservation": {"owner"},
     "register_cash_movement": {"owner", "manager"},
 }

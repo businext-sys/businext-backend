@@ -66,7 +66,8 @@ def system_prompt(ctx: ToolContext) -> str:
         "preparan la acción: di que la confirme en la tarjeta y no afirmes que ya está hecha. "
         "Si el usuario dice que sí, confirma o vale a una tarjeta pendiente, llama a "
         "confirm_pending_action sin pedirle que pulse nada. "
-        "Cambiar la hora de una reserva se hace al momento: dilo y recuerda que puede pedir deshacerlo."
+        "Cambiar la hora de una reserva y marcar que un cliente no vino se hacen al momento: dilo y "
+        "recuerda que puede pedir deshacerlo."
     )
 
 

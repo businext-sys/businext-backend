@@ -9,6 +9,7 @@ class ProductBase(SQLModel):
     type: Optional[str] = None
     image_url: Optional[str] = None
     seller: Optional[str] = None
+    duration_minutes: Optional[int] = Field(default=30, ge=5, le=480)
 
 
 class Product(ProductBase, table=True):
@@ -28,3 +29,4 @@ class ProductUpdate(ProductBase):
     type: Optional[str] = None
     image_url: Optional[str] = None
     seller: Optional[str] = None
+    duration_minutes: Optional[int] = Field(default=None, ge=5, le=480)

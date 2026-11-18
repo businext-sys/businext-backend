@@ -121,6 +121,7 @@ def business_aggregates(session: Session, business_id: str, today: date) -> dict
             Reservation.business_id == business_id,
             Reservation.reservation_start_date >= since,
             Reservation.reservation_start_date < until,
+            Reservation.status != "NO_SHOW",
         )
     ).all()
     incomes = session.exec(

@@ -40,7 +40,8 @@
           "type": "object",
           "properties": {
             "date": {"type": "string", "description": "Fecha en formato YYYY-MM-DD."},
-            "employee_name": {"type": "string", "description": "Profesional, si el cliente quiere uno concreto."}
+            "employee_name": {"type": "string", "description": "Profesional, si el cliente quiere uno concreto."},
+            "service": {"type": "string", "description": "Servicio elegido (de get_services), para buscar huecos donde quepa entero."}
           },
           "required": ["date"]
         },

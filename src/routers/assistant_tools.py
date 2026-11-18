@@ -7,11 +7,11 @@ con las mismas reglas de acceso, sin duplicar queries.
 """
 
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 
 from fastapi import HTTPException
 
-from src.services.availability_service import get_available_slots
+from src.services.availability_service import get_available_slots, service_duration
 from src.services.customer_service import find_customers
 from src.services.assistant.tools import MANAGEMENT_ROLES, Tool, ToolContext, ToolResult, own_name, register
 
@@ -176,7 +176,8 @@ def _get_products(ctx: ToolContext, args: dict) -> ToolResult:
 
 def _get_free_slots(ctx: ToolContext, args: dict) -> ToolResult:
     day = _parse_date(args.get("date"), ctx.today)
-    slots = get_available_slots(ctx.session, ctx.auth.business_id, day, args.get("in_charge"))
+    duration = service_duration(ctx.session, ctx.auth.business_id, args.get("service"))
+    slots = get_available_slots(ctx.session, ctx.auth.business_id, day, args.get("in_charge"), duration)
     return ToolResult(data={"date": day.isoformat(), "free_slots": slots[:20]})
 
 
@@ -238,8 +239,9 @@ def _get_working_hours(ctx: ToolContext, args: dict) -> ToolResult:
 
 
 def _find_customers(ctx: ToolContext, args: dict) -> ToolResult:
-    customers = find_customers(ctx.session, ctx.auth.business_id, args.get("query") or "", limit=10)
-    return ToolResult(data=[{**c, "last_visit": c["last_visit"].isoformat()} for c in customers])
+    now = ctx.now or datetime.combine(ctx.today, datetime.max.time())
+    customers = find_customers(ctx.session, ctx.auth.business_id, now, args.get("query") or "", limit=10)
+    return ToolResult(data=[{**c, "last_visit": c["last_visit"] and c["last_visit"].isoformat()} for c in customers])
 
 
 DATE_PARAM = {"type": "string", "description": "Fecha en formato YYYY-MM-DD"}
@@ -305,12 +307,13 @@ register(Tool(
 
 register(Tool(
     name="get_free_slots",
-    description="Huecos libres de 30 minutos de un día, dentro del horario del negocio.",
+    description="Horas de inicio libres de un día (cada 15 min) donde cabe el servicio, dentro del horario del negocio.",
     parameters={
         "type": "object",
         "properties": {
             "date": {"type": "string", "description": "YYYY-MM-DD; por defecto, hoy"},
             "in_charge": {"type": "string", "description": "Profesional, opcional"},
+            "service": {"type": "string", "description": "Servicio (de get_products), opcional: fija la duración"},
         },
     },
     status_label="Buscando huecos libres…",
