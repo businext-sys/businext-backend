@@ -42,6 +42,7 @@ MATRIX = {
     "get_products": {"owner", "manager", "employee"},
     "get_working_hours": {"owner", "manager", "employee"},
     "get_free_slots": {"owner", "manager", "employee"},
+    "find_customers": {"owner", "manager", "employee"},
     "get_cash_summary": {"owner", "manager"},
     "get_weekly_summary": {"owner", "manager"},
     "get_reviews": {"owner", "manager"},
@@ -49,6 +50,8 @@ MATRIX = {
     "reschedule_reservation": {"owner", "manager", "employee"},
     "cancel_reservation": {"owner", "manager", "employee"},
     "complete_reservation": {"owner", "manager", "employee"},
+    "update_reservation_contact": {"owner", "manager", "employee"},
+    "confirm_pending_action": {"owner", "manager", "employee"},
     "revert_reservation": {"owner"},
     "register_cash_movement": {"owner", "manager"},
 }

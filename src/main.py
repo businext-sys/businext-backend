@@ -11,6 +11,7 @@ from .routers import (
     booking_request,
     configuration,
     customer_message,
+    customers,
     employee,
     finances,
     google_reviews,
@@ -79,4 +80,5 @@ app.include_router(reminders.internal_router)
 app.include_router(voice_agent.router)
 app.include_router(voice_agent.retell_router)
 app.include_router(customer_message.router)
+app.include_router(customers.router)
 app.include_router(account.router)

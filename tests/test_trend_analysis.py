@@ -358,3 +358,15 @@ class TestRefresh:
         session.delete(session.exec(select(TrendSnapshot)).one())
         session.commit()
         assert client.post("/trends/insight/refresh", headers=AUTH).status_code == 409
+
+    def test_refresh_sin_tendencias_de_hoy_devuelve_el_ultimo_analisis(self, client, session, claude):
+        client.post("/internal/trends/analyze", headers=JOB_AUTH)
+        insight = session.exec(select(TrendInsight)).one()
+        insight.day = today() - timedelta(days=1)
+        session.delete(session.exec(select(TrendSnapshot)).one())
+        session.commit()
+        response = client.post("/trends/insight/refresh", headers=AUTH)
+        assert response.status_code == 200
+        assert response.json()["id"] == insight.id
+        assert response.json()["refreshed_at"] is None
+        assert claude.beta.messages.create.call_count == 1

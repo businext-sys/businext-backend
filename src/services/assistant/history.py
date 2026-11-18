@@ -8,6 +8,7 @@ historial: las operaciones lanzan HistoryUnavailable y se registra un aviso.
 
 import json
 import logging
+import re
 import uuid
 from datetime import datetime
 
@@ -23,6 +24,9 @@ HISTORY_LIMIT = 20
 TITLE_LENGTH = 60
 PREVIEW_LENGTH = 100
 BLOCK_CONTEXT_LENGTH = 500
+# Formato con el que se guardaban las tarjetas antes; el modelo llego a copiarlo en sus respuestas.
+LEAKED_CARD = re.compile(r"\[tarjeta mostrada al usuario:[^\n]*")
+CONFIRMATION_STATUS = {"pending": "pendiente de confirmar", "confirmed": "hecho", "cancelled": "descartada"}
 
 
 class HistoryUnavailable(Exception):
@@ -45,8 +49,43 @@ def _owned(session: Session, auth: AuthContext, conversation_id: str) -> Assista
     return None
 
 
+def _clean(text: str) -> str:
+    return LEAKED_CARD.sub("", text).strip()
+
+
 def _text_of(blocks: list[dict]) -> str:
-    return " ".join(b["text"] for b in blocks if b.get("type") == "text").strip()
+    return " ".join(_clean(b["text"]) for b in blocks if b.get("type") == "text").strip()
+
+
+def _reservation_summary(r: dict) -> str:
+    return f"{r.get('client_name')} · {r.get('service')}, {str(r.get('start_time', ''))[:16]}, {r.get('status')}, id {r.get('id')}"
+
+
+def _block_summary(block: dict) -> str:
+    """Una tarjeta en una linea legible: el modelo la usa de contexto y no tiene formato que imitar."""
+    kind = block.get("type")
+    if kind == "confirmation":
+        status = block.get("status")
+        summary = f"Tarjeta «{block.get('title')}»: {block.get('description')} — {CONFIRMATION_STATUS.get(status, status)}"
+        if status == "pending":
+            summary += f", id {block.get('action_id')}"
+    elif kind == "reservation_list":
+        items = "; ".join(_reservation_summary(r) for r in block.get("reservations", [])) or "ninguna"
+        summary = f"Tarjeta «{block.get('title') or 'Reserva'}»: {items}"
+    elif kind == "cash_summary":
+        summary = (
+            f"Tarjeta de caja «{block.get('period_label')}»: ingresos {block.get('total_income')} €, "
+            f"gastos {block.get('total_expense')} €, balance {block.get('balance')} €"
+        )
+    elif kind == "booking_request":
+        r = block.get("request", {})
+        summary = (
+            f"Tarjeta de solicitud: {r.get('client_name')} · {r.get('service')}, "
+            f"{str(r.get('requested_date', ''))[:16]}, {r.get('status')}, id {r.get('id')}"
+        )
+    else:
+        summary = f"Tarjeta {kind}"
+    return f"({summary[:BLOCK_CONTEXT_LENGTH]})"
 
 
 def open_conversation(
@@ -115,9 +154,9 @@ def llm_history(session: Session, conversation: AssistantConversation) -> list[d
             parts = []
             for block in json.loads(message.blocks):
                 if block.get("type") == "text":
-                    parts.append(block["text"])
+                    parts.append(_clean(block["text"]))
                 else:
-                    parts.append(f"[tarjeta mostrada al usuario: {json.dumps(block, ensure_ascii=False)[:BLOCK_CONTEXT_LENGTH]}]")
+                    parts.append(_block_summary(block))
             history.append({"role": message.role, "content": "\n".join(parts)})
         return history
 

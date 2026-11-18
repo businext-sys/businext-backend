@@ -446,5 +446,82 @@
     "prompt": "dame una hora libre hoy",
     "role": "employee",
     "tool": "get_free_slots"
+  },
+  {
+    "id": "c59",
+    "prompt": "Crea una reserva para Jairo ya mismo, un corte, y márcala completada",
+    "role": "owner",
+    "tool": "create_reservation",
+    "args": {
+      "customer_name": "Jairo",
+      "service": "Corte",
+      "start": "{now}",
+      "completed": true
+    }
+  },
+  {
+    "id": "c60",
+    "prompt": "apunta a Laura mañana a las 12 para barba, su email es laura@example.com",
+    "role": "manager",
+    "tool": "create_reservation",
+    "args": {
+      "customer_name": "Laura",
+      "start": "{tomorrow}T12:00",
+      "customer_email": "laura@example.com"
+    }
+  },
+  {
+    "id": "c61",
+    "prompt": "¿qué teléfono tiene Jairo?",
+    "role": "owner",
+    "tool": "find_customers",
+    "args": {
+      "query": "Jairo"
+    }
+  },
+  {
+    "id": "c62",
+    "prompt": "Sí, confirmado",
+    "role": "owner",
+    "tool": "confirm_pending_action",
+    "args": {
+      "action_id": "3f2c9a1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f"
+    },
+    "history": [
+      {
+        "role": "user",
+        "content": "Juan ya ha terminado, cóbrale"
+      },
+      {
+        "role": "assistant",
+        "content": "Confírmalo en la tarjeta.\n(Tarjeta «Completar reserva»: Juan · Corte, el miércoles 22/10 a las 17:00. Se registra el cobro del servicio. — pendiente de confirmar, id 3f2c9a1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f)"
+      }
+    ]
+  },
+  {
+    "id": "c63",
+    "prompt": "vale",
+    "role": "employee",
+    "tool": "confirm_pending_action",
+    "history": [
+      {
+        "role": "user",
+        "content": "completa la de Juan"
+      },
+      {
+        "role": "assistant",
+        "content": "Confírmalo en la tarjeta.\n(Tarjeta «Completar reserva»: Juan · Corte, el miércoles 22/10 a las 17:00. Se registra el cobro del servicio. — pendiente de confirmar, id 3f2c9a1e-5b7d-4e8a-9c0f-1a2b3c4d5e6f)"
+      }
+    ]
+  },
+  {
+    "id": "c64",
+    "prompt": "el email del cliente de la reserva 12 es juan@example.com",
+    "role": "manager",
+    "tool": "update_reservation_contact",
+    "args": {
+      "id": 12,
+      "customer_email": "juan@example.com"
+    }
   }
 ]

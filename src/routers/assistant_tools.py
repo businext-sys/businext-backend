@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from fastapi import HTTPException
 
 from src.services.availability_service import get_available_slots
+from src.services.customer_service import find_customers
 from src.services.assistant.tools import MANAGEMENT_ROLES, Tool, ToolContext, ToolResult, own_name, register
 
 from . import booking_request, finances, google_reviews, intelligence, product, reservation, working_hours
@@ -236,6 +237,11 @@ def _get_working_hours(ctx: ToolContext, args: dict) -> ToolResult:
     )
 
 
+def _find_customers(ctx: ToolContext, args: dict) -> ToolResult:
+    customers = find_customers(ctx.session, ctx.auth.business_id, args.get("query") or "", limit=10)
+    return ToolResult(data=[{**c, "last_visit": c["last_visit"].isoformat()} for c in customers])
+
+
 DATE_PARAM = {"type": "string", "description": "Fecha en formato YYYY-MM-DD"}
 
 register(Tool(
@@ -333,6 +339,18 @@ register(Tool(
     status_label="Consultando el resumen semanal…",
     handler=_get_weekly_summary,
     roles=MANAGEMENT_ROLES,
+))
+
+register(Tool(
+    name="find_customers",
+    description="Clientes conocidos del negocio (nombre, teléfono, email y última visita) que coinciden con un nombre, teléfono o email.",
+    parameters={
+        "type": "object",
+        "properties": {"query": {"type": "string", "description": "Nombre, teléfono o email (o parte)"}},
+        "required": ["query"],
+    },
+    status_label="Buscando clientes…",
+    handler=_find_customers,
 ))
 
 register(Tool(

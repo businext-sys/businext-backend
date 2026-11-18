@@ -136,7 +136,10 @@ def get_insight(session: SessionDep, auth: AuthContext = Depends(require_manager
 
 @router.post("/insight/refresh", response_model=TrendInsightPublic)
 def refresh_insight(session: SessionDep, auth: AuthContext = Depends(require_manager_or_owner)):
-    """Regenera el analisis de hoy y sus sugerencias pendientes. Una vez al dia."""
+    """
+    Regenera el analisis de hoy y sus sugerencias pendientes. Una vez al dia.
+    Sin tendencias de hoy devuelve el ultimo analisis tal cual, sin gastar el refresco.
+    """
     today = datetime.now(BUSINESS_TIMEZONE).date()
     preferences = session.get(ContentPreferences, auth.business_id)
     if not preferences or not preferences.enabled:
@@ -148,7 +151,14 @@ def refresh_insight(session: SessionDep, auth: AuthContext = Depends(require_man
         raise HTTPException(status_code=429, detail="Ya has actualizado el análisis hoy. Podrás volver a hacerlo mañana.")
     snapshot = today_snapshot(session, preferences, today)
     if not snapshot or snapshot.payload == "[]":
-        raise HTTPException(status_code=409, detail="Todavía no hay tendencias de hoy")
+        latest = insight or session.exec(
+            select(TrendInsight).where(TrendInsight.business_id == auth.business_id).order_by(TrendInsight.day.desc())
+        ).first()
+        if latest:
+            return _insight_public(latest)
+        raise HTTPException(
+            status_code=409, detail="Las tendencias de hoy aún no están listas. Vuelve a probar en un rato."
+        )
     try:
         return _insight_public(analyze_business(session, preferences, snapshot, datetime.utcnow(), refresh=True))
     except (TrendAnalysisError, SQLAlchemyError):
