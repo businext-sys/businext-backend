@@ -202,6 +202,18 @@ class TestFunctions:
         other = function(client, "book_appointment", {**BOOKING, "time": "09:00", "client_phone": "611 22 33 44"}).json()
         assert session.get(Reservation, other["reservation_id"]).customer_phone == "611223344"
 
+    def test_se_reserva_sin_email(self, client, session):
+        sin_email = {k: v for k, v in BOOKING.items() if k != "client_email"}
+        request = session.get(BookingRequest, function(client, "book_appointment", sin_email).json()["request_id"])
+        assert (request.client_email, request.client_phone) == ("", "+34600000000")
+
+        config = session.exec(select(VoiceAgentConfig).where(VoiceAgentConfig.business_id == OWNER)).one()
+        config.booking_mode = "confirm"
+        session.commit()
+        data = function(client, "book_appointment", {**sin_email, "time": "09:00"}).json()
+        reservation = session.get(Reservation, data["reservation_id"])
+        assert (reservation.customer_phone, reservation.customer_email) == ("+34600000000", None)
+
     def test_una_hora_no_disponible_vuelve_como_error(self, client):
         data = function(client, "book_appointment", {**BOOKING, "time": "18:00"}).json()
         assert data == {"ok": False, "error": "Esa hora no está disponible. Consulta la disponibilidad y ofrece otra."}

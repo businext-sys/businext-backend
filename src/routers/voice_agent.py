@@ -427,7 +427,7 @@ class AvailabilityArgs(BaseModel):
 
 class BookArgs(BaseModel):
     client_name: str
-    client_email: str
+    client_email: str | None = None
     client_phone: str | None = None
     service: str
     date: date
@@ -508,7 +508,7 @@ def _book_appointment(session, business_id: str, config, call: RetellCall, args:
             business_id,
             BookingRequestCreate(
                 client_name=parsed.client_name,
-                client_email=parsed.client_email,
+                client_email=parsed.client_email or "",
                 client_phone=client_phone,
                 employee_name=employee_name,
                 service=parsed.service,
@@ -522,7 +522,7 @@ def _book_appointment(session, business_id: str, config, call: RetellCall, args:
             "ok": True,
             "mode": "request",
             "request_id": result["id"],
-            "message": "Solicitud enviada. El negocio la confirmará y el cliente recibirá un email.",
+            "message": "Solicitud enviada. El negocio la confirmará.",
         }
     result = _confirm_reservation(session, business_id, parsed, start, employee_name, client_phone)
     _record_call(session, call.call_id, business_id, booking_mode="confirm", booking_id=result["reservation_id"])
@@ -569,7 +569,7 @@ def _confirm_reservation(
         "mode": "confirm",
         "reservation_id": reservation.id,
         "employee_name": in_charge or ANY_EMPLOYEE,
-        "message": "Reserva confirmada. El cliente recibirá un email.",
+        "message": "Reserva confirmada.",
     }
 
 
