@@ -2,6 +2,7 @@
 Duracion por servicio, huecos que la respetan y estado «no vino» (businext-sys/businext#220).
 """
 from datetime import date, datetime, time, timedelta
+from zoneinfo import ZoneInfo
 
 import pytest
 from fastapi.testclient import TestClient
@@ -250,3 +251,16 @@ class TestFichaDeCliente:
 
     def test_cliente_desconocido(self, client):
         assert client.get("/customers/detail?name=nadie", headers=AUTH).status_code == 404
+
+
+class TestHuecosDeHoy:
+    def test_no_ofrece_horas_ya_pasadas_en_madrid(self, session, monkeypatch):
+        from src.services import availability_service
+
+        class Madrid1216(datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return datetime(DAY.year, DAY.month, DAY.day, 11, 16, tzinfo=ZoneInfo("UTC")).astimezone(tz)
+
+        monkeypatch.setattr(availability_service, "datetime", Madrid1216)
+        assert starts(session, 30)[0] == "12:30"

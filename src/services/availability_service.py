@@ -1,4 +1,5 @@
 from datetime import datetime, date, timedelta
+from zoneinfo import ZoneInfo
 from sqlmodel import Session, func, select
 from src.database.models.product_model import Product
 from src.database.models.working_hours_model import WorkingHours
@@ -9,6 +10,7 @@ from src.database.models.profile_model import Profile
 
 SLOT_DURATION_MINUTES = 30
 SLOT_STEP_MINUTES = 15
+BUSINESS_TIMEZONE = ZoneInfo("Europe/Madrid")
 
 
 def service_duration(session: Session, business_id: str, service: str | None) -> int:
@@ -104,7 +106,7 @@ def get_available_slots(
     Considers working hours (multi-block), existing reservations (their real start/end) and pending booking requests.
     """
     day_of_week = target_date.weekday()  # 0=Monday
-    now = datetime.utcnow()
+    now = datetime.now(BUSINESS_TIMEZONE).replace(tzinfo=None)
 
     # Resolve which employees to check
     if employee_name:
