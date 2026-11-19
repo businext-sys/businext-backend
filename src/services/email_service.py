@@ -11,6 +11,8 @@ APP_URL = os.environ.get("APP_URL", "http://localhost:3000")
 
 def send_email(to: str, subject: str, html: str, reply_to: str | None = None) -> Optional[str]:
     """Send an email via Resend. Returns the email ID or None on failure."""
+    if not to:
+        return None
     if not resend.api_key:
         print("[email_service] RESEND_API_KEY not configured, skipping email")
         return None

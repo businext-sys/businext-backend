@@ -70,7 +70,7 @@ def accept_booking_request(
         status="PENDING",
         service=booking.service,
         customer_phone=clean_phone(booking.client_phone),
-        customer_email=booking.client_email,
+        customer_email=booking.client_email or None,
     )
     session.add(reservation)
 
