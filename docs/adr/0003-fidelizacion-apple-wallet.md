@@ -39,9 +39,12 @@ cliente.
      (protocolo de PassKit).
    - Y `location.latitude/longitude` opcionales para las `locations` del pase.
 2. **Cliente = email.** Es lo que pide la reserva pública y lo que permite
-   entregar el pase. Una reserva sin email (walk-in) usa el email más
-   reciente de las reservas con el mismo nombre (`known_contact`); sin
-   ninguno, no sella.
+   entregar el pase. Una reserva sin email (walk-in) usa, por este orden:
+   el email de la reserva más reciente del negocio con el **mismo teléfono**
+   (normalizado: solo dígitos, los 9 últimos, así `+34 600 00 00 01` y
+   `600-000-001` coinciden; `customer_service.email_by_phone`) y, si no hay,
+   el de la más reciente con el mismo nombre (`known_contact`). Sin ninguno,
+   no sella (salvo que el barbero escanee su QR).
 3. **Sellado en un único punto, idempotente.** `loyalty_service.sync_reservation`
    se llama tras crear, cambiar, borrar o revertir una reserva (routers de
    reservas, aceptar solicitud y agente de voz; el asistente pasa por el
@@ -158,10 +161,16 @@ cliente.
 - El QR solo identifica la tarjeta ante un miembro autenticado del mismo
   negocio; a cualquier otro le da 404. Una foto del QR permite a otro cliente
   hacerse pasar por el titular en el local (como una tarjeta de cartón).
-- La tarjeta se crea al pedir cita (para poder mandar el enlace en el email),
-  aunque la solicitud se rechace después: queda una tarjeta con 0 sellos.
-- El `logoText` del pase sigue siendo el nombre del negocio también con logo
-  propio; si el logo ya lleva el nombre, se ve dos veces.
+- La tarjeta se crea al pedir cita (para poder mandar el enlace en el email).
+  Si la solicitud se rechaza o caduca, o se borra la reserva, y la tarjeta
+  quedó vacía, se borra (`loyalty_service.discard_empty_card`): sin ningún
+  sello (tampoco canjeado), sin dispositivos en `walletregistration` y sin
+  otra solicitud o reserva pendiente con ese email (su enlace sigue
+  sirviendo). El enlace que ya recibió el cliente da entonces 404; si vuelve,
+  se le crea una tarjeta nueva.
+- Con logo propio el pase no lleva `logoText` (el logo ya identifica al
+  negocio y suele incluir el nombre). Sin logo, o si no se pudo descargar y
+  sale el de Businext, `logoText` es el nombre del negocio.
 
 ## Decisiones del 2026-11-26
 
@@ -174,12 +183,13 @@ cliente.
 4. **Canje:** cualquier rol. Los sellos no caducan.
 5. **QR en el pase:** sí, con un token opaco. Hecho, con sello manual para
    walk-ins.
+6. **Tarjetas vacías:** se borran al rechazar, caducar o borrar la solicitud
+   o reserva (ver Consecuencias). Hecho.
+7. **`logoText`:** solo sin logo propio. Hecho.
+8. **Identidad:** el email sigue siendo la clave; sin email, primero por
+   teléfono y luego por nombre. Hecho.
 
 ## Preguntas abiertas
 
-1. **¿El email es la identidad correcta?** Los walk-ins sin email no suman
-   salvo que su nombre coincida con reservas que sí lo tienen o que el
-   barbero escanee su QR. ¿Pedir el email al completar, o identificar
-   también por teléfono?
-2. **Pass Type ID único de Businext** (`pass.<dominio>.loyalty`, todas las
+1. **Pass Type ID único de Businext** (`pass.<dominio>.loyalty`, todas las
    barberías firmadas por la cuenta de Businext) — es lo asumido aquí.

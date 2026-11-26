@@ -1,8 +1,9 @@
 """
 Tarjeta de fidelidad: un sello por reserva completada. Ver docs/adr/0003.
 
-El cliente es su email en minusculas (el de la reserva o, si no lo tiene, el
-mas reciente de sus reservas con el mismo nombre). Sin email no hay tarjeta.
+El cliente es su email en minusculas: el de la reserva o, si no lo tiene, el
+de la reserva mas reciente con el mismo telefono (solo digitos, ultimos 9) y,
+si no hay, con el mismo nombre. Sin email no hay tarjeta.
 Las visitas anteriores al dia en que el negocio activo la tarjeta no sellan.
 Un walk-in tambien puede sumar un sello escaneando el QR del pase (uno al dia).
 """
@@ -25,7 +26,8 @@ from src.database.models.loyalty_model import (
 )
 from src.database.models.reservation_model import Reservation
 from src.services import apple_wallet, loyalty_logo
-from src.services.customer_service import known_contact
+from src.database.models.booking_request_model import BookingRequest
+from src.services.customer_service import email_by_phone, known_contact
 from src.services.email_service import APP_URL, email_loyalty_pass, send_email
 from src.services.trend_sources import BUSINESS_TIMEZONE
 
@@ -237,8 +239,48 @@ def _reservation_email(session: Session, reservation: Reservation) -> str | None
     email = normalize_email(reservation.customer_email)
     if email:
         return email
+    by_phone = normalize_email(email_by_phone(session, reservation.business_id, reservation.customer_phone))
+    if by_phone:
+        return by_phone
     _, known = known_contact(session, reservation.business_id, reservation.customer_name)
     return normalize_email(known)
+
+
+def discard_empty_card(session: Session, business_id: str, email: str | None) -> bool:
+    """
+    Tras rechazar, caducar o borrar una solicitud o reserva: borra la tarjeta del
+    cliente si se creo para nada — sin ningun sello (ni canjeado) y sin
+    dispositivos registrados en Wallet — y el cliente no tiene otra solicitud
+    pendiente ni reserva pendiente con ese email (su enlace sigue sirviendo).
+    True si la borra. Nunca falla.
+    """
+    try:
+        card = find_card(session, business_id, email)
+        if not card:
+            return False
+        has_stamps = session.exec(select(LoyaltyStamp.id).where(LoyaltyStamp.card_id == card.id)).first()
+        has_devices = session.exec(
+            select(WalletRegistration.id).where(WalletRegistration.serial_number == card.serial_number)
+        ).first()
+        pending_request = session.exec(select(BookingRequest.id).where(
+            BookingRequest.business_id == business_id,
+            func.lower(BookingRequest.client_email) == card.customer_email,
+            BookingRequest.status == "REQUESTED",
+        )).first()
+        pending_reservation = session.exec(select(Reservation.id).where(
+            Reservation.business_id == business_id,
+            func.lower(Reservation.customer_email) == card.customer_email,
+            Reservation.status == "PENDING",
+        )).first()
+        if has_stamps or has_devices or pending_request or pending_reservation:
+            return False
+        session.delete(card)
+        session.commit()
+        return True
+    except Exception:
+        session.rollback()
+        logger.exception("loyalty: no se pudo limpiar la tarjeta vacia")
+        return False
 
 
 def sync_reservation(session: Session, reservation: Reservation) -> None:
@@ -376,6 +418,9 @@ def render_pass(session: Session, card: LoyaltyCard, config: apple_wallet.Wallet
     program = get_program(session, card.business_id)
     data = pass_data(session, card, program)
     images = loyalty_logo.pass_images(program.logo_url if program else None)
+    # Con logo propio no se repite el nombre al lado; si no se pudo descargar, el
+    # pase lleva el de Businext y entonces si hace falta el nombre.
+    data.custom_logo = images is not None
     return apple_wallet.package_pass(apple_wallet.build_pass_json(data, config), config, images)
 
 

@@ -14,7 +14,7 @@ from ..database.models.member_model import BusinessMember
 from ..database.models.profile_model import Profile
 from src.api.auth import AuthContext, require_subscription, require_owner
 from src.services.availability_service import service_duration
-from src.services.loyalty_service import sync_reservation
+from src.services.loyalty_service import discard_empty_card, sync_reservation
 from src.services.team_notifications import notify_reservation_change
 
 router = APIRouter(
@@ -205,6 +205,7 @@ def delete_reservation(
     session.commit()
     notify_reservation_change(session, cancelled, "cancelled", auth.user_id)
     sync_reservation(session, cancelled)
+    discard_empty_card(session, cancelled.business_id, cancelled.customer_email)
     return {"Reservation deleted": True}
 
 

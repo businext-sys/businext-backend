@@ -150,6 +150,7 @@ class PassData:
     background_color: str | None = None
     foreground_color: str | None = None
     label_color: str | None = None
+    custom_logo: bool = False  # sin logoText: el logo del negocio ya lo identifica
 
 
 def _rgb(hex_color: str) -> str:
@@ -217,7 +218,6 @@ def build_pass_json(data: PassData, config: WalletConfig) -> dict:
         "webServiceURL": config.web_service_url,
         "organizationName": data.business_name,
         "description": f"Tarjeta de fidelidad de {data.business_name}",
-        "logoText": data.business_name,
         "sharingProhibited": True,
         "backgroundColor": _rgb(data.background_color or DEFAULT_BACKGROUND),
         "foregroundColor": _rgb(data.foreground_color or DEFAULT_FOREGROUND),
@@ -250,6 +250,8 @@ def build_pass_json(data: PassData, config: WalletConfig) -> dict:
             "backFields": back_fields,
         },
     }
+    if not data.custom_logo:
+        pass_json["logoText"] = data.business_name
     if data.next_appointment:
         pass_json["relevantDate"] = _w3c(data.next_appointment)
     if data.locations:

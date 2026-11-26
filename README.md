@@ -532,7 +532,8 @@ El owner y el manager leen y cambian el ajuste con `GET`/`PUT /configuration/rem
 Detalle y preguntas abiertas en [ADR 0003](docs/adr/0003-fidelizacion-apple-wallet.md).
 El owner activa la tarjeta con `PUT /loyalty/program` (`enabled`, `stamps_required`,
 `reward`, colores `#RRGGBB`); cada reserva que pasa a `COMPLETED` suma un sello a la
-tarjeta del cliente (por email), una sola vez, y revertirla lo quita. Las visitas
+tarjeta del cliente (por email; sin email, el de otra reserva con el mismo telefono o,
+si no, con el mismo nombre), una sola vez, y revertirla lo quita. Las visitas
 anteriores al dia de la primera activacion no suman. El pase de Wallet se regenera y se
 avisa por APNs a los dispositivos registrados cuando cambian los sellos, la proxima cita,
 la regla o el logo. Los sellos no caducan y cualquier rol canjea.

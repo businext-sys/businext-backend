@@ -264,3 +264,36 @@ def test_si_el_logo_no_se_puede_descargar_el_pase_lleva_el_de_businext(session, 
     card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
     default = (apple_wallet.ASSETS_DIR / "logo@2x.png").read_bytes()
     assert _pass_files(session, card)["logo@2x.png"] == default
+
+
+# --- logoText ----------------------------------------------------------------
+
+def _pass_json(session, card) -> dict:
+    import json
+
+    return json.loads(_pass_files(session, card)["pass.json"])
+
+
+def test_con_logo_propio_el_pase_no_repite_el_nombre(client, session, storage, monkeypatch):
+    set_wallet_env(monkeypatch, CERTS)
+    upload(client, png(600, 200))
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    data = _pass_json(session, card)
+    assert "logoText" not in data
+    assert data["organizationName"] == "Barbería Sol"
+
+
+def test_sin_logo_propio_el_pase_lleva_el_nombre(session, monkeypatch):
+    set_wallet_env(monkeypatch, CERTS)
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    assert _pass_json(session, card)["logoText"] == "Barbería Sol"
+
+
+def test_si_el_logo_no_se_descarga_vuelve_el_nombre(session, storage, monkeypatch):
+    set_wallet_env(monkeypatch, CERTS)
+    program = session.exec(select(LoyaltyProgram)).one()
+    program.logo_url = f"{SUPABASE}/storage/v1/object/public/loyalty-logos/{OWNER}/borrado/logo@2x.png"
+    session.add(program)
+    session.commit()
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    assert _pass_json(session, card)["logoText"] == "Barbería Sol"

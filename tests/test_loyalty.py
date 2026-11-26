@@ -542,3 +542,134 @@ def test_escanear_y_canjear(client, session, monkeypatch):
     app.dependency_overrides[get_auth_context] = lambda: _auth("employee")
     redeemed = client.post(f"/loyalty/cards/{scanned['serial_number']}/redeem", headers=AUTH).json()
     assert redeemed["stamps"] == 0
+
+
+# --- Tarjetas vacias: rechazar, caducar o borrar ---------------------------------
+
+def _booking_request(session, email="eva@example.com", status="REQUESTED"):
+    from src.database.models.booking_request_model import BookingRequest
+
+    request = BookingRequest(
+        business_id=OWNER, client_name="Eva", client_email=email, client_phone="600000000",
+        service="Corte", requested_date=datetime.utcnow() + timedelta(days=2), status=status,
+    )
+    session.add(request)
+    session.commit()
+    session.refresh(request)
+    return request
+
+
+@pytest.fixture
+def quiet_emails(monkeypatch):
+    from src.routers import booking_request
+
+    monkeypatch.setattr(booking_request, "send_email", lambda *a, **k: None)
+
+
+def test_rechazar_la_solicitud_borra_la_tarjeta_vacia(client, session, quiet_emails):
+    request = _booking_request(session)
+    loyalty_service.get_or_create_card(session, OWNER, "Eva@example.com", "Eva")
+    assert client.post(f"/booking-requests/{request.id}/reject", headers=AUTH).status_code == 200
+    assert session.exec(select(LoyaltyCard)).all() == []
+
+
+def test_rechazar_no_borra_una_tarjeta_con_sellos(client, session, quiet_emails):
+    complete(client, reservation(session, customer_email="eva@example.com").id)
+    request = _booking_request(session)
+    client.post(f"/booking-requests/{request.id}/reject", headers=AUTH)
+    assert len(session.exec(select(LoyaltyCard)).all()) == 1
+
+
+def test_rechazar_no_borra_una_tarjeta_con_sellos_ya_canjeados(client, session, quiet_emails):
+    card = loyalty_service.get_or_create_card(session, OWNER, "eva@example.com", "Eva")
+    r = reservation(session, customer_email="eva@example.com", status="COMPLETED")
+    session.add(LoyaltyStamp(card_id=card.id, reservation_id=r.id, visit_date=r.reservation_start_date,
+                             service="Corte", redeemed_at=datetime.utcnow()))
+    session.commit()
+    request = _booking_request(session)
+    client.post(f"/booking-requests/{request.id}/reject", headers=AUTH)
+    assert len(session.exec(select(LoyaltyCard)).all()) == 1
+
+
+def test_rechazar_no_borra_una_tarjeta_ya_en_wallet(client, session, quiet_emails):
+    card = loyalty_service.get_or_create_card(session, OWNER, "eva@example.com", "Eva")
+    session.add(WalletRegistration(
+        device_library_identifier="d", pass_type_identifier="p", serial_number=card.serial_number, push_token="t",
+    ))
+    session.commit()
+    request = _booking_request(session)
+    client.post(f"/booking-requests/{request.id}/reject", headers=AUTH)
+    assert len(session.exec(select(LoyaltyCard)).all()) == 1
+
+
+def test_rechazar_no_borra_la_tarjeta_si_tiene_otra_cita_pendiente(client, session, quiet_emails):
+    loyalty_service.get_or_create_card(session, OWNER, "eva@example.com", "Eva")
+    reservation(session, customer_name="Eva", customer_email="EVA@example.com", status="PENDING")
+    request = _booking_request(session)
+    client.post(f"/booking-requests/{request.id}/reject", headers=AUTH)
+    assert len(session.exec(select(LoyaltyCard)).all()) == 1
+
+
+def test_caducar_la_solicitud_borra_la_tarjeta_vacia(session):
+    _booking_request(session, status="EXPIRED")
+    loyalty_service.get_or_create_card(session, OWNER, "eva@example.com", "Eva")
+    assert loyalty_service.discard_empty_card(session, OWNER, "eva@example.com") is True
+    assert session.exec(select(LoyaltyCard)).all() == []
+
+
+def test_otra_solicitud_pendiente_mantiene_la_tarjeta(session):
+    _booking_request(session)
+    loyalty_service.get_or_create_card(session, OWNER, "eva@example.com", "Eva")
+    assert loyalty_service.discard_empty_card(session, OWNER, "eva@example.com") is False
+
+
+def test_borrar_la_reserva_borra_la_tarjeta_vacia(client, session):
+    r = reservation(session, customer_name="Eva", customer_email="eva@example.com")
+    loyalty_service.get_or_create_card(session, OWNER, "eva@example.com", "Eva")
+    assert client.delete(f"/reservations/{r.id}", headers=AUTH).status_code == 200
+    assert session.exec(select(LoyaltyCard)).all() == []
+
+
+def test_borrar_la_reserva_mantiene_la_tarjeta_con_sellos(client, session):
+    complete(client, reservation(session, start=datetime(2026, 11, 1, 10)).id)
+    r = reservation(session, start=datetime(2026, 11, 5, 10))
+    client.delete(f"/reservations/{r.id}", headers=AUTH)
+    assert len(session.exec(select(LoyaltyCard)).all()) == 1
+
+
+# --- Identidad: email, si no telefono, si no nombre ------------------------------
+
+@pytest.mark.parametrize("raw, expected", [
+    ("+34 600 00 00 01", "600000001"), ("600-000-001", "600000001"), ("0034600000001", "600000001"),
+    ("", None), (None, None), ("sin numero", None),
+])
+def test_normalizar_telefono(raw, expected):
+    from src.services.customer_service import normalize_phone
+
+    assert normalize_phone(raw) == expected
+
+
+def test_sin_email_busca_primero_por_telefono(client, session):
+    reservation(session, start=datetime(2026, 10, 1, 10), customer_name="Ana Pérez",
+                customer_email="ana.tel@example.com", customer_phone="+34 600 00 00 01")
+    reservation(session, start=datetime(2026, 10, 5, 10), customer_name="Ana", customer_email="otra.ana@example.com")
+    walk_in = reservation(session, customer_name="Ana", customer_email=None, customer_phone="600-000-001")
+    complete(client, walk_in.id)
+    assert session.exec(select(LoyaltyCard)).one().customer_email == "ana.tel@example.com"
+
+
+def test_sin_email_ni_telefono_conocido_busca_por_nombre(client, session):
+    reservation(session, start=datetime(2026, 10, 1, 10), customer_name="Pepe",
+                customer_email="pepe@example.com", customer_phone="611111111")
+    reservation(session, start=datetime(2026, 10, 5, 10), customer_name="Ana", customer_email="ana@example.com")
+    walk_in = reservation(session, customer_name="Ana", customer_email=None, customer_phone="699999999")
+    complete(client, walk_in.id)
+    assert session.exec(select(LoyaltyCard)).one().customer_email == "ana@example.com"
+
+
+def test_telefono_de_otro_negocio_no_cuenta(client, session):
+    reservation(session, business_id="otro", customer_name="Zoe", customer_email="zoe@example.com",
+                customer_phone="600000001")
+    walk_in = reservation(session, customer_name="Ana", customer_email=None, customer_phone="600000001")
+    complete(client, walk_in.id)
+    assert session.exec(select(LoyaltyCard).where(LoyaltyCard.business_id == OWNER)).all() == []
