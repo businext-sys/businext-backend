@@ -17,6 +17,7 @@ from .routers import (
     google_reviews,
     intelligence,
     location,
+    loyalty,
     notification_preferences,
     product,
     public_booking,
@@ -87,3 +88,6 @@ app.include_router(voice_agent.retell_router)
 app.include_router(customer_message.router)
 app.include_router(customers.router)
 app.include_router(account.router)
+app.include_router(loyalty.router)
+app.include_router(loyalty.public_router)
+app.include_router(loyalty.wallet_router)

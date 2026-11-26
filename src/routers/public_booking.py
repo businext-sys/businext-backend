@@ -27,6 +27,7 @@ from src.services.email_service import (
     send_email,
 )
 from src.services.assistant import history
+from src.services import loyalty_service
 from src.services.push_notification_service import send_push_notifications
 
 router = APIRouter(prefix="/public/book", tags=["public-booking"])
@@ -241,10 +242,16 @@ def create_booking_request(
             location_name = loc.name
             location_address = loc.address
 
+    # El enlace al pase de fidelidad va solo en el email (prueba de que el email es
+    # del cliente), nunca en la respuesta: cualquiera puede pedir con un email ajeno.
+    wallet_pass_url = loyalty_service.wallet_link_for_booking(
+        session, business_id, booking.client_email, booking.client_name,
+    )
     subject, html = email_request_received_client(
         booking.client_name, booking.service, date_str, biz.business_name, booking.employee_name,
         business_phone=biz.business_phone, business_email=biz.business_email,
         location_name=location_name, location_address=location_address,
+        wallet_pass_url=wallet_pass_url,
     )
     send_email(booking.client_email, subject, html)
 

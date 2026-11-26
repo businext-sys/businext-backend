@@ -7,6 +7,7 @@ from src.database.database import get_engine
 from src.database.models.booking_request_model import BookingRequest
 from src.database.models.business_conf_model import BusinessConfiguration
 from src.services.email_service import send_email, email_request_expired
+from src.services.loyalty_service import discard_empty_card
 
 
 async def expire_old_requests():
@@ -43,6 +44,8 @@ async def expire_old_requests():
 
                 if expired:
                     session.commit()
+                    for booking in expired:
+                        discard_empty_card(session, booking.business_id, booking.client_email)
                     print(f"[expiration_service] Expired {len(expired)} booking requests")
 
         except Exception as e:

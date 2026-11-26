@@ -69,6 +69,29 @@ def known_contact(session: Session, business_id: str, name: str) -> tuple[str | 
     return phone, email
 
 
+def normalize_phone(phone: str | None) -> str | None:
+    """Solo digitos y los 9 ultimos (sin prefijo de pais): «+34 600-00-00-01» → «600000001»."""
+    digits = "".join(c for c in phone or "" if c.isdigit())[-9:]
+    return digits or None
+
+
+def email_by_phone(session: Session, business_id: str, phone: str | None) -> str | None:
+    """Email de la reserva mas reciente del negocio con el mismo telefono (normalizado)."""
+    key = normalize_phone(phone)
+    if not key:
+        return None
+    rows = session.exec(
+        select(Reservation.customer_phone, Reservation.customer_email)
+        .where(
+            Reservation.business_id == business_id,
+            Reservation.customer_phone.is_not(None),  # type: ignore[union-attr]
+            Reservation.customer_email.is_not(None),  # type: ignore[union-attr]
+        )
+        .order_by(Reservation.reservation_start_date.desc())  # type: ignore[union-attr]
+    ).all()
+    return next((email for row_phone, email in rows if email and normalize_phone(row_phone) == key), None)
+
+
 def _reservation_item(r: Reservation) -> dict:
     return {"id": r.id, "start": r.reservation_start_date, "service": r.service, "in_charge": r.in_charge, "status": r.status}
 

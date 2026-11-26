@@ -48,3 +48,12 @@ websockets==15.0.1
 openai==1.82.0
 anthropic==0.125.0
 resend==2.12.0
+# Apple Wallet: firma PKCS#7 de los pases y APNs por HTTP/2 (docs/adr/0003)
+cryptography==50.0.2
+cffi==2.1.1
+pycparser==3.12
+h2==4.4.1
+hpack==4.2.0
+hyperframe==6.1.0
+# Logo de cada barberia en el pase: redimensionado a los tamanos de Apple
+pillow==12.0.0

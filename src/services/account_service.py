@@ -8,6 +8,7 @@ usuario de Auth ya inexistente se toleran), asi que si falla el ultimo paso
 la app puede reintentar `DELETE /users/me` sin riesgo.
 """
 
+import asyncio
 import logging
 import os
 
@@ -28,6 +29,7 @@ from src.database.models.finances_model import Finances
 from src.database.models.google_business_profile_model import GoogleBusinessProfile
 from src.database.models.google_review_model import GoogleReview
 from src.database.models.location_model import Location
+from src.database.models.loyalty_model import LoyaltyCard, LoyaltyProgram, LoyaltyStamp, WalletRegistration
 from src.database.models.member_model import BusinessMember
 from src.database.models.product_model import Product
 from src.database.models.profile_model import Profile
@@ -46,6 +48,7 @@ from src.database.models.voice_agent_model import (
 )
 from src.database.models.weekly_summary_model import WeeklySummary
 from src.database.models.working_hours_model import WorkingHours
+from src.services import loyalty_logo
 from src.services.supabase_utils import get_supabase_settings
 
 logger = logging.getLogger(__name__)
@@ -194,6 +197,15 @@ def _delete_business_rows(session: Session, business_id: str) -> None:
     )
     session.exec(delete(PushToken).where(col(PushToken.user_id).in_(member_ids)))
 
+    # Tarjeta de fidelidad (docs/adr/0003): dispositivos y sellos de sus tarjetas,
+    # tarjetas y regla. El logo del bucket lo borra `delete_account` despues.
+    card_ids = select(LoyaltyCard.id).where(LoyaltyCard.business_id == business_id)
+    serials = select(LoyaltyCard.serial_number).where(LoyaltyCard.business_id == business_id)
+    session.exec(delete(WalletRegistration).where(col(WalletRegistration.serial_number).in_(serials)))
+    session.exec(delete(LoyaltyStamp).where(col(LoyaltyStamp.card_id).in_(card_ids)))
+    session.exec(delete(LoyaltyCard).where(LoyaltyCard.business_id == business_id))
+    session.exec(delete(LoyaltyProgram).where(LoyaltyProgram.business_id == business_id))
+
     conversation_ids = select(AssistantConversation.id).where(
         AssistantConversation.business_id == business_id
     )
@@ -242,6 +254,14 @@ def delete_database_rows(session: Session, auth: AuthContext, is_business_owner:
         raise HTTPException(status_code=500, detail="No se pudieron borrar los datos de la cuenta")
 
 
+async def _delete_loyalty_logo(logo_url: str) -> None:
+    """Logo del pase en Supabase Storage. Mejor esfuerzo: un fallo no bloquea el borrado de la cuenta."""
+    try:
+        await asyncio.to_thread(loyalty_logo.delete_logo, logo_url)
+    except Exception:
+        logger.warning("No se pudo borrar el logo del pase %s", logo_url, exc_info=True)
+
+
 async def delete_account(session: Session, auth: AuthContext) -> None:
     """
     Borra la cuenta del usuario autenticado.
@@ -257,9 +277,16 @@ async def delete_account(session: Session, auth: AuthContext) -> None:
     # Falla antes de borrar nada si faltan credenciales: si no, quedaria el usuario vivo sin datos.
     get_supabase_settings()
 
+    logo_url = None
     if is_business_owner:
         await cancel_billable_subscriptions(session, auth.user_id)
+        logo_url = session.exec(
+            select(LoyaltyProgram.logo_url).where(LoyaltyProgram.business_id == auth.business_id)
+        ).first()
 
     delete_database_rows(session, auth, is_business_owner)
+
+    if logo_url:
+        await _delete_loyalty_logo(logo_url)
 
     await delete_auth_user(auth.user_id)

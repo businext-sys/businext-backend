@@ -8,6 +8,9 @@ class LocationBase(SQLModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     maps_link: Optional[str] = None
+    # Para que iOS sugiera el pase de fidelidad cerca del local (docs/adr/0003).
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
 
 
 class Location(LocationBase, table=True):
@@ -34,6 +37,8 @@ class LocationCreate(SQLModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     maps_link: Optional[str] = None
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
 
 
 class LocationUpdate(SQLModel):
@@ -41,4 +46,6 @@ class LocationUpdate(SQLModel):
     address: Optional[str] = None
     phone: Optional[str] = None
     maps_link: Optional[str] = None
+    latitude: Optional[float] = Field(default=None, ge=-90, le=90)
+    longitude: Optional[float] = Field(default=None, ge=-180, le=180)
     is_active: Optional[bool] = None

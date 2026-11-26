@@ -48,6 +48,7 @@ from src.database.models.voice_agent_model import (
 from src.services.ai_service import CALL_SUMMARY_MAX_CHARS, generate_call_summary
 from src.services.availability_service import get_available_slots, service_duration
 from src.services.email_service import email_request_accepted, send_email
+from src.services.loyalty_service import sync_reservation
 from src.services.retell import require_retell_signature
 from src.services.text_limits import shorten
 from src.services.team_notifications import notify_reservation_change
@@ -554,6 +555,7 @@ def _confirm_reservation(
     session.commit()
     session.refresh(reservation)
     notify_reservation_change(session, reservation, "created", None)
+    sync_reservation(session, reservation)
 
     biz = public_booking._get_business_or_404(session, business_id)
     location = session.get(Location, parsed.location_id) if parsed.location_id else None

@@ -27,6 +27,7 @@ from src.database.models.finances_model import Finances
 from src.database.models.google_business_profile_model import GoogleBusinessProfile
 from src.database.models.google_review_model import GoogleReview
 from src.database.models.location_model import Location
+from src.database.models.loyalty_model import LoyaltyCard, LoyaltyProgram, LoyaltyStamp, WalletRegistration
 from src.database.models.member_model import BusinessMember
 from src.database.models.product_model import Product
 from src.database.models.profile_model import Profile
@@ -47,7 +48,7 @@ from src.database.models.voice_agent_model import (
 from src.database.models.weekly_summary_model import WeeklySummary
 from src.database.models.working_hours_model import WorkingHours
 from src.main import app
-from src.services import account_service
+from src.services import account_service, loyalty_logo
 
 OWNER = "owner-1"
 EMPLOYEE = "emp-1"
@@ -76,7 +77,23 @@ BUSINESS_MODELS = [
     BusinessMember,
     Location,
     BusinessConfiguration,
+    LoyaltyProgram,
+    LoyaltyCard,
 ]
+
+
+def _logo_url(owner_id: str) -> str:
+    return f"{SUPABASE_URL}/storage/v1/object/public/loyalty-logos/{owner_id}/abc/logo@2x.png"
+
+
+def _loyalty_counts(session: Session, owner_id: str) -> tuple[int, int]:
+    """Sellos y registros de Wallet de las tarjetas de un negocio."""
+    cards = session.exec(select(LoyaltyCard).where(LoyaltyCard.business_id == owner_id)).all()
+    ids = [c.id for c in cards]
+    serials = [c.serial_number for c in cards]
+    stamps = [s for s in session.exec(select(LoyaltyStamp)).all() if s.card_id in ids]
+    devices = [r for r in session.exec(select(WalletRegistration)).all() if r.serial_number in serials]
+    return len(stamps), len(devices)
 
 
 def _seed_business(session: Session, owner_id: str, employee_id: str, suffix: str) -> None:
@@ -151,6 +168,15 @@ def _seed_business(session: Session, owner_id: str, employee_id: str, suffix: st
         session.add(PushToken(user_id=user_id, token=f"ExponentPushToken[{user_id}]"))
         session.add(Profile(id=user_id, display_name=user_id))
     session.add(Subscription(user_id=owner_id, stripe_subscription_id=f"sub_{suffix}", status="active"))
+    session.add(LoyaltyProgram(business_id=owner_id, enabled=True, logo_url=_logo_url(owner_id)))
+    card = LoyaltyCard(business_id=owner_id, customer_email="c@x.com", customer_name="C")
+    session.add(card)
+    session.flush()
+    session.add(LoyaltyStamp(card_id=card.id, reservation_id=reservation.id, visit_date=now, service="Corte"))
+    session.add(WalletRegistration(
+        device_library_identifier=f"device-{suffix}", pass_type_identifier="pass.x",
+        serial_number=card.serial_number, push_token=f"push-{suffix}",
+    ))
 
 
 def _count(session: Session, model, **filters) -> int:
@@ -202,6 +228,14 @@ def session_fixture():
         ))
         session.commit()
         yield session
+
+
+@pytest.fixture(name="deleted_logos", autouse=True)
+def deleted_logos_fixture(monkeypatch):
+    """El borrado del logo en Supabase Storage se apunta en vez de salir a la red."""
+    deleted: list[str] = []
+    monkeypatch.setattr(loyalty_logo, "delete_logo", lambda url: deleted.append(url))
+    return deleted
 
 
 @pytest.fixture(name="http")
@@ -257,6 +291,41 @@ class TestOwner:
         _assert_business_intact(session, OTHER_OWNER)
         assert _count(session, Subscription, user_id=OTHER_OWNER) == 1
         assert _count(session, TrendSnapshot) == 1
+
+    def test_deletes_loyalty_data_and_logo(self, client, session, http, deleted_logos):
+        _login(OWNER, OWNER, "owner")
+
+        assert client.delete("/users/me").status_code == 204
+
+        assert _count(session, LoyaltyProgram, business_id=OWNER) == 0
+        assert _count(session, LoyaltyCard, business_id=OWNER) == 0
+        assert _loyalty_counts(session, OWNER) == (0, 0)
+        assert _count(session, LoyaltyStamp) == 1
+        assert _count(session, WalletRegistration) == 1
+        assert _loyalty_counts(session, OTHER_OWNER) == (1, 1)
+        assert deleted_logos == [_logo_url(OWNER)]
+
+    def test_storage_failure_does_not_block_deletion(self, client, session, http, monkeypatch):
+        def broken(url):
+            raise RuntimeError("Storage caido")
+
+        monkeypatch.setattr(loyalty_logo, "delete_logo", broken)
+        _login(OWNER, OWNER, "owner")
+
+        assert client.delete("/users/me").status_code == 204
+        assert _count(session, LoyaltyProgram, business_id=OWNER) == 0
+        assert http.calls("supabase.test") == [f"DELETE /auth/v1/admin/users/{OWNER}"]
+
+    def test_without_logo_does_not_touch_storage(self, client, session, http, deleted_logos):
+        program = session.exec(select(LoyaltyProgram).where(LoyaltyProgram.business_id == OWNER)).one()
+        program.logo_url = None
+        session.add(program)
+        session.commit()
+        _login(OWNER, OWNER, "owner")
+
+        assert client.delete("/users/me").status_code == 204
+        assert deleted_logos == []
+        assert _count(session, LoyaltyCard, business_id=OWNER) == 0
 
     def test_without_stripe_key_fails_and_deletes_nothing(self, client, session, http, monkeypatch):
         monkeypatch.delenv("STRIPE_SECRET_KEY")
@@ -333,6 +402,7 @@ class TestMember:
         for model in BUSINESS_MODELS:
             if model is not BusinessMember:
                 assert _count(session, model, business_id=OWNER) > 0, model.__name__
+        assert _loyalty_counts(session, OWNER) == (1, 1)
 
 
 class TestAuthAndRetries:
