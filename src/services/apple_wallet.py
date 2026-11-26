@@ -6,7 +6,8 @@ Pases de Apple Wallet (`storeCard`) para la tarjeta de fidelidad. Ver docs/adr/0
   alguna, devuelve None y las rutas de Wallet responden 503.
 - `build_pass_json()` es puro: decide el contenido del pase.
 - `package_pass()` empaqueta el `.pkpass` (manifest con SHA-1 y firma PKCS#7
-  separada del manifest, con el WWDR incluido).
+  separada del manifest, con el WWDR incluido) con el logo del negocio o, si
+  no tiene, el de Businext (`src/assets/wallet/`).
 - `push_updates()` avisa por APNs (HTTP/2, certificado del pase como cliente
   TLS) a los dispositivos registrados; Wallet pide entonces el pase nuevo.
 """
@@ -135,6 +136,7 @@ class PassData:
 
     serial_number: str
     auth_token: str
+    scan_token: str  # lo que lleva el QR; nunca el email
     business_name: str
     customer_name: str
     stamps: int
@@ -220,6 +222,12 @@ def build_pass_json(data: PassData, config: WalletConfig) -> dict:
         "backgroundColor": _rgb(data.background_color or DEFAULT_BACKGROUND),
         "foregroundColor": _rgb(data.foreground_color or DEFAULT_FOREGROUND),
         "labelColor": _rgb(data.label_color or DEFAULT_LABEL),
+        # QR para que el barbero identifique la tarjeta en el local (GET /loyalty/scan/{token}).
+        "barcodes": [{
+            "format": "PKBarcodeFormatQR",
+            "message": data.scan_token,
+            "messageEncoding": "iso-8859-1",
+        }],
         "storeCard": {
             "headerFields": [],
             "primaryFields": [{

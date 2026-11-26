@@ -282,29 +282,263 @@ def test_info_publica_del_programa(client):
     assert client.get("/public/loyalty/no-existe").status_code == 404
 
 
-def test_la_solicitud_de_reserva_devuelve_el_enlace_al_pase(client, session, monkeypatch):
+def _public_request(client, monkeypatch, email="eva@example.com"):
     from src.routers import public_booking
 
-    set_wallet_env(monkeypatch, make_certs())
-    monkeypatch.setattr(public_booking, "send_email", lambda *a, **k: None)
+    sent: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(public_booking, "send_email", lambda to, subject, html, **k: sent.append((to, subject, html)))
     response = client.post(f"/public/book/{OWNER}/request", json={
-        "client_name": "Eva", "client_email": "eva@example.com", "client_phone": "600000000",
+        "client_name": "Eva", "client_email": email, "client_phone": "600000000",
         "service": "Corte", "requested_date": (datetime.utcnow() + timedelta(days=2)).isoformat(),
     })
     assert response.status_code == 201
+    return response, {to: html for to, _, html in sent}
+
+
+def test_la_solicitud_publica_no_devuelve_el_enlace_al_pase(client, session, monkeypatch):
+    """Privacidad: quien pida con un email ajeno no obtiene la tarjeta de ese cliente."""
+    set_wallet_env(monkeypatch, make_certs())
+    response, _ = _public_request(client, monkeypatch)
+    assert "wallet_pass_url" not in response.json()
     card = session.exec(select(LoyaltyCard)).one()
-    assert response.json()["wallet_pass_url"].endswith(f"/{card.serial_number}.pkpass?token={card.auth_token}")
+    assert card.auth_token not in response.text and card.serial_number not in response.text
 
 
-def test_sin_programa_la_solicitud_no_trae_pase(client, session, monkeypatch):
-    from src.routers import public_booking
+def test_el_enlace_al_pase_va_en_el_email_de_la_solicitud(client, session, monkeypatch):
+    set_wallet_env(monkeypatch, make_certs())
+    _, emails = _public_request(client, monkeypatch)
+    card = session.exec(select(LoyaltyCard)).one()
+    html = emails["eva@example.com"]
+    assert "Añadir a Apple Wallet" in html
+    assert f"/public/loyalty/passes/{card.serial_number}.pkpass?token={card.auth_token}" in html
 
+
+def test_sin_programa_el_email_no_trae_pase(client, session, monkeypatch):
+    set_wallet_env(monkeypatch, make_certs())
     session.delete(session.exec(select(LoyaltyProgram)).one())
     session.commit()
-    monkeypatch.setattr(public_booking, "send_email", lambda *a, **k: None)
-    response = client.post(f"/public/book/{OWNER}/request", json={
-        "client_name": "Eva", "client_email": "eva@example.com", "client_phone": "600000000",
-        "service": "Corte", "requested_date": (datetime.utcnow() + timedelta(days=2)).isoformat(),
-    })
-    assert response.json()["wallet_pass_url"] is None
+    _, emails = _public_request(client, monkeypatch)
+    assert "Apple Wallet" not in emails["eva@example.com"]
     assert session.exec(select(LoyaltyCard)).all() == []
+
+
+def test_sin_wallet_configurado_el_email_no_trae_pase(client, session, monkeypatch):
+    _, emails = _public_request(client, monkeypatch)
+    assert "Apple Wallet" not in emails["eva@example.com"]
+    assert session.exec(select(LoyaltyCard)).all() == []
+
+
+def test_aceptar_la_solicitud_envia_el_enlace_en_la_confirmacion(client, session, monkeypatch):
+    from src.database.models.booking_request_model import BookingRequest
+    from src.routers import booking_request
+
+    set_wallet_env(monkeypatch, make_certs())
+    sent: list[tuple[str, str, str]] = []
+    monkeypatch.setattr(booking_request, "send_email", lambda to, subject, html, **k: sent.append((to, subject, html)))
+    request = BookingRequest(
+        business_id=OWNER, client_name="Eva", client_email="eva@example.com", client_phone="600000000",
+        service="Corte", requested_date=datetime.utcnow() + timedelta(days=2),
+    )
+    session.add(request)
+    session.commit()
+    response = client.post(f"/booking-requests/{request.id}/accept", headers=AUTH)
+    assert response.status_code == 200
+    assert "wallet_pass_url" not in response.json()
+    card = session.exec(select(LoyaltyCard)).one()
+    (to, subject, html), = sent
+    assert to == "eva@example.com" and subject.startswith("¡Reserva confirmada!")
+    assert "Añadir a Apple Wallet" in html and card.auth_token in html
+
+
+# --- Reenvio del enlace desde el negocio ---------------------------------------
+
+@pytest.fixture
+def outbox(monkeypatch):
+    sent: list[tuple[str, str, str]] = []
+
+    def fake_send(to, subject, html, **kwargs):
+        sent.append((to, subject, html))
+        return "email-id"
+
+    monkeypatch.setattr(loyalty_service, "send_email", fake_send)
+    return sent
+
+
+def test_el_barbero_reenvia_el_enlace_al_email_del_cliente(client, session, monkeypatch, outbox):
+    set_wallet_env(monkeypatch, make_certs())
+    app.dependency_overrides[get_auth_context] = lambda: _auth("employee")
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "<b>Ana</b>")
+    response = client.post(f"/loyalty/cards/{card.serial_number}/send-pass", headers=AUTH)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["sent_to"] == "ana@example.com"
+    assert body["pass_url"].endswith(f"/{card.serial_number}.pkpass?token={card.auth_token}")
+    (to, subject, html), = outbox
+    assert to == "ana@example.com"
+    assert subject == "Tu tarjeta de fidelidad — Barbería Sol"
+    assert "Añadir a Apple Wallet" in html and body["pass_url"] in html
+    assert "<b>Ana</b>" not in html and "&lt;b&gt;Ana&lt;/b&gt;" in html
+    assert "0 de 3" in html
+
+
+def test_reenviar_el_enlace_de_otro_negocio_da_404(client, session, monkeypatch, outbox):
+    set_wallet_env(monkeypatch, make_certs())
+    other = loyalty_service.get_or_create_card(session, "otro", "ana@example.com", "Ana")
+    assert client.post(f"/loyalty/cards/{other.serial_number}/send-pass", headers=AUTH).status_code == 404
+    assert outbox == []
+
+
+def test_reenviar_sin_wallet_configurado_da_503(client, session, outbox):
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    assert client.post(f"/loyalty/cards/{card.serial_number}/send-pass", headers=AUTH).status_code == 503
+    assert outbox == []
+
+
+def test_reenviar_si_el_email_falla_da_502(client, session, monkeypatch):
+    set_wallet_env(monkeypatch, make_certs())
+    monkeypatch.setattr(loyalty_service, "send_email", lambda *a, **k: None)
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    assert client.post(f"/loyalty/cards/{card.serial_number}/send-pass", headers=AUTH).status_code == 502
+
+
+# --- Activacion: las visitas anteriores no cuentan -------------------------------
+
+def test_activar_fija_enabled_at_una_sola_vez(client, session):
+    session.delete(session.exec(select(LoyaltyProgram)).one())
+    session.commit()
+    client.put("/loyalty/program", json={"enabled": False}, headers=AUTH)
+    assert session.exec(select(LoyaltyProgram)).one().enabled_at is None
+    client.put("/loyalty/program", json={"enabled": True}, headers=AUTH)
+    first = session.exec(select(LoyaltyProgram)).one().enabled_at
+    assert first is not None
+    client.put("/loyalty/program", json={"enabled": False}, headers=AUTH)
+    client.put("/loyalty/program", json={"enabled": True, "stamps_required": 5}, headers=AUTH)
+    assert session.exec(select(LoyaltyProgram)).one().enabled_at == first
+
+
+def test_las_visitas_anteriores_al_dia_de_activacion_no_sellan(client, session):
+    program = session.exec(select(LoyaltyProgram)).one()
+    program.enabled_at = datetime(2026, 11, 10, 15, 0)  # UTC: 16:00 en Madrid
+    session.add(program)
+    session.commit()
+    before = reservation(session, start=datetime(2026, 11, 9, 18))
+    same_day = reservation(session, start=datetime(2026, 11, 10, 9))
+    after = reservation(session, start=datetime(2026, 11, 12, 10))
+    for r in (before, same_day, after):
+        assert complete(client, r.id).status_code == 200
+    assert sorted(s.reservation_id for s in stamps(session)) == sorted([same_day.id, after.id])
+
+
+# --- Escaneo del QR y sello manual (walk-in) ----------------------------------
+
+TODAY = datetime(2026, 11, 20, 12, 30)
+
+
+@pytest.fixture
+def frozen_today(monkeypatch):
+    monkeypatch.setattr(loyalty_service, "madrid_now", lambda: TODAY)
+    return TODAY
+
+
+def test_escanear_devuelve_la_tarjeta_del_negocio(client, session, frozen_today):
+    complete(client, reservation(session, start=datetime(2026, 11, 1, 10)).id)
+    card = session.exec(select(LoyaltyCard)).one()
+    app.dependency_overrides[get_auth_context] = lambda: _auth("employee")
+    response = client.get(f"/loyalty/scan/{card.scan_token}", headers=AUTH)
+    assert response.status_code == 200
+    body = response.json()
+    assert body["serial_number"] == card.serial_number
+    assert body["customer_name"] == "Ana"
+    assert body["stamps"] == 1 and body["stamps_required"] == 3
+    assert body["reward"] == "Corte gratis" and body["reward_ready"] is False
+    assert [v["visit_date"][:10] for v in body["visits"]] == ["2026-11-01"]
+    assert body["stamped_today"] is False and body["stamp_added"] is False
+
+
+def test_escanear_una_tarjeta_de_otro_negocio_da_404(client, session):
+    other = loyalty_service.get_or_create_card(session, "otro", "ana@example.com", "Ana")
+    assert client.get(f"/loyalty/scan/{other.scan_token}", headers=AUTH).status_code == 404
+    assert client.post(f"/loyalty/scan/{other.scan_token}/stamp", headers=AUTH).status_code == 404
+    assert client.get("/loyalty/scan/no-existe", headers=AUTH).status_code == 404
+    assert stamps(session) == []
+
+
+def test_el_token_del_qr_no_es_el_email_ni_el_del_pase(session):
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    assert len(card.scan_token) >= 20
+    assert "ana" not in card.scan_token.lower()
+    assert card.scan_token not in (card.auth_token, card.serial_number)
+
+
+def test_sello_manual_idempotente_por_dia(client, session, pushes, frozen_today):
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    session.add(WalletRegistration(
+        device_library_identifier="d", pass_type_identifier="p", serial_number=card.serial_number, push_token="t",
+    ))
+    session.commit()
+    pushes.clear()
+    app.dependency_overrides[get_auth_context] = lambda: _auth("employee")
+
+    first = client.post(f"/loyalty/scan/{card.scan_token}/stamp", headers=AUTH).json()
+    assert first["stamp_added"] is True and first["stamped_today"] is True and first["stamps"] == 1
+    assert first["visits"][0]["visit_date"].startswith("2026-11-20")
+    assert pushes == [["t"]]
+
+    again = client.post(f"/loyalty/scan/{card.scan_token}/stamp", headers=AUTH).json()
+    assert again["stamp_added"] is False and again["stamps"] == 1
+    assert pushes == [["t"]]
+    (stamp,) = stamps(session)
+    assert stamp.reservation_id is None and stamp.manual_day == TODAY.date()
+    assert stamp.service == loyalty_service.MANUAL_STAMP_SERVICE
+
+
+def test_sello_manual_otro_dia_si_suma(client, session, monkeypatch):
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    for day in (20, 21):
+        monkeypatch.setattr(loyalty_service, "madrid_now", lambda day=day: datetime(2026, 11, day, 11))
+        assert client.post(f"/loyalty/scan/{card.scan_token}/stamp", headers=AUTH).json()["stamp_added"] is True
+    assert len(stamps(session)) == 2
+
+
+def test_sello_manual_no_suma_si_ya_hay_reserva_completada_hoy(client, session, frozen_today):
+    complete(client, reservation(session, start=TODAY.replace(hour=10)).id)
+    card = session.exec(select(LoyaltyCard)).one()
+    body = client.post(f"/loyalty/scan/{card.scan_token}/stamp", headers=AUTH).json()
+    assert body["stamp_added"] is False and body["stamped_today"] is True
+    assert len(stamps(session)) == 1
+
+
+def test_reserva_completada_el_dia_de_un_sello_manual_no_suma_otro(client, session, frozen_today):
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    client.post(f"/loyalty/scan/{card.scan_token}/stamp", headers=AUTH)
+    r = reservation(session, start=TODAY.replace(hour=17), service="Barba")
+    complete(client, r.id)
+    (stamp,) = stamps(session)
+    assert stamp.reservation_id == r.id and stamp.service == "Barba"
+
+    # Revertir la reserva no borra la visita que el barbero sello a mano.
+    client.post(f"/reservations/{r.id}/revert", headers=AUTH)
+    (stamp,) = stamps(session)
+    assert stamp.reservation_id is None and stamp.service == loyalty_service.MANUAL_STAMP_SERVICE
+
+
+def test_sello_manual_con_el_programa_desactivado_da_409(client, session):
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    program = session.exec(select(LoyaltyProgram)).one()
+    program.enabled = False
+    session.add(program)
+    session.commit()
+    assert client.post(f"/loyalty/scan/{card.scan_token}/stamp", headers=AUTH).status_code == 409
+    assert client.get(f"/loyalty/scan/{card.scan_token}", headers=AUTH).status_code == 200
+
+
+def test_escanear_y_canjear(client, session, monkeypatch):
+    card = loyalty_service.get_or_create_card(session, OWNER, "ana@example.com", "Ana")
+    for day in (1, 2, 3):
+        monkeypatch.setattr(loyalty_service, "madrid_now", lambda day=day: datetime(2026, 11, day, 11))
+        client.post(f"/loyalty/scan/{card.scan_token}/stamp", headers=AUTH)
+    scanned = client.get(f"/loyalty/scan/{card.scan_token}", headers=AUTH).json()
+    assert scanned["reward_ready"] is True
+    app.dependency_overrides[get_auth_context] = lambda: _auth("employee")
+    redeemed = client.post(f"/loyalty/cards/{scanned['serial_number']}/redeem", headers=AUTH).json()
+    assert redeemed["stamps"] == 0

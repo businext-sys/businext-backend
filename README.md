@@ -19,6 +19,8 @@ Repos hermanos: [`businext`](https://github.com/businext-sys/businext)
   [Migraciones](#migraciones)).
 - **OpenAI** (`ai_service`), **Outscraper** (resenas de Google), **Resend** y
   **Gmail SMTP** (emails), **Expo Push API** (notificaciones).
+- **cryptography** (firma de los pases de Apple Wallet) y **Pillow** (logo de
+  cada barberia en los tamanos del pase).
 
 ## Requisitos
 
@@ -97,6 +99,8 @@ APPLE_WALLET_KEY=                    # su clave privada (PEM)
 APPLE_WALLET_KEY_PASSWORD=           # opcional, si la clave esta cifrada
 APPLE_WALLET_WWDR=                   # intermedio Apple WWDR G4 (PEM)
 PUBLIC_API_URL=https://businext-backend.onrender.com   # https; webServiceURL y enlaces de los pases
+LOYALTY_LOGO_BUCKET=loyalty-logos    # bucket publico de Supabase Storage con los logos de los pases
+                                     # (usa SUPABASE_URL y SUPABASE_SERVICE_ROLE_KEY)
 ```
 
 ### CORS
@@ -444,7 +448,7 @@ LLM (Claude Haiku 5.5 desde la story #217; antes OpenAI `gpt-4o-mini`), orquesta
 [0002 — agente de voz Retell](docs/adr/0002-agente-de-voz-retell.md):
 numero → negocio, firma y modos de reserva.
 [0003 — tarjeta de fidelidad con Apple Wallet](docs/adr/0003-fidelizacion-apple-wallet.md):
-modelo de sellos, firma de pases y web service de PassKit.
+modelo de sellos, firma de pases, web service de PassKit, QR, sello manual y logo.
 
 ## Generacion de tipos para el frontend
 
@@ -528,9 +532,38 @@ El owner y el manager leen y cambian el ajuste con `GET`/`PUT /configuration/rem
 Detalle y preguntas abiertas en [ADR 0003](docs/adr/0003-fidelizacion-apple-wallet.md).
 El owner activa la tarjeta con `PUT /loyalty/program` (`enabled`, `stamps_required`,
 `reward`, colores `#RRGGBB`); cada reserva que pasa a `COMPLETED` suma un sello a la
-tarjeta del cliente (por email), una sola vez, y revertirla lo quita. El pase de Wallet se
-regenera y se avisa por APNs a los dispositivos registrados cuando cambian los sellos, la
-proxima cita o la regla.
+tarjeta del cliente (por email), una sola vez, y revertirla lo quita. Las visitas
+anteriores al dia de la primera activacion no suman. El pase de Wallet se regenera y se
+avisa por APNs a los dispositivos registrados cuando cambian los sellos, la proxima cita,
+la regla o el logo. Los sellos no caducan y cualquier rol canjea.
+
+- **Enlace del pase, solo por email.** `POST /public/book/{id}/request` no lo devuelve
+  (cualquiera puede pedir cita con un email ajeno); va como boton «Añadir a Apple Wallet»
+  en los emails de solicitud recibida y de reserva confirmada.
+  `POST /loyalty/cards/{serial}/send-pass` lo reenvia al email del cliente.
+- **QR.** El pase lleva un QR con el `scan_token` de la tarjeta (opaco, no es el email).
+  La app lo escanea y llama a `GET /loyalty/scan/{token}` (cliente, sellos, premio,
+  ultimas visitas, `stamped_today`; 404 si es de otro negocio) y, para un walk-in,
+  `POST /loyalty/scan/{token}/stamp` (un sello al dia como mucho). El canje sigue siendo
+  `POST /loyalty/cards/{serial}/redeem`.
+- **Logo propio (opcional).** `PUT /loyalty/program/logo` (owner, multipart `file`: PNG,
+  JPG o WebP, ≤ 2 MB) lo adapta a los tamanos de Apple y lo sube a Supabase Storage;
+  `DELETE /loyalty/program/logo` vuelve al de Businext. `GET /loyalty/program` devuelve
+  `logo_url` (vista previa).
+
+**Bucket de logos (una vez, a mano).** En Supabase → Storage → *New bucket*: nombre
+`loyalty-logos` (o el de `LOYALTY_LOGO_BUCKET`), **Public bucket** activado, limite de
+tamano 1 MB y tipos `image/png`. O en el SQL Editor:
+
+```sql
+INSERT INTO storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+VALUES ('loyalty-logos', 'loyalty-logos', true, 1048576, ARRAY['image/png'])
+ON CONFLICT (id) DO NOTHING;
+```
+
+Sin politicas: el backend sube y borra con la service role key, y el bucket publico deja
+leer los logos sin firma. Sin el bucket, subir un logo da 502; sin `SUPABASE_URL` o
+`SUPABASE_SERVICE_ROLE_KEY`, 503. Los pases siguen funcionando con el logo de Businext.
 
 Para firmar pases hace falta, en la cuenta de Apple Developer:
 

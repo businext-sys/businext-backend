@@ -3,10 +3,13 @@ Tarjeta de fidelidad: un sello por reserva completada. Ver docs/adr/0003.
 
 El cliente es su email en minusculas (el de la reserva o, si no lo tiene, el
 mas reciente de sus reservas con el mismo nombre). Sin email no hay tarjeta.
+Las visitas anteriores al dia en que el negocio activo la tarjeta no sellan.
+Un walk-in tambien puede sumar un sello escaneando el QR del pase (uno al dia).
 """
 
 import logging
-from datetime import datetime, timedelta
+from datetime import date, datetime, time, timedelta, timezone
+from html import escape
 
 from sqlalchemy.exc import IntegrityError
 from sqlmodel import Session, col, delete, func, select
@@ -21,14 +24,15 @@ from src.database.models.loyalty_model import (
     WalletRegistration,
 )
 from src.database.models.reservation_model import Reservation
-from src.services import apple_wallet
+from src.services import apple_wallet, loyalty_logo
 from src.services.customer_service import known_contact
-from src.services.email_service import APP_URL
+from src.services.email_service import APP_URL, email_loyalty_pass, send_email
 from src.services.trend_sources import BUSINESS_TIMEZONE
 
 logger = logging.getLogger(__name__)
 
 CARD_VISITS = 20
+MANUAL_STAMP_SERVICE = "Visita sin reserva"
 
 
 def normalize_email(email: str | None) -> str | None:
@@ -42,6 +46,29 @@ def _now() -> datetime:
 
 def get_program(session: Session, business_id: str) -> LoyaltyProgram | None:
     return session.exec(select(LoyaltyProgram).where(LoyaltyProgram.business_id == business_id)).first()
+
+
+def madrid_now() -> datetime:
+    """Hora de pared de Madrid, como `reservation_start_date`."""
+    return datetime.now(BUSINESS_TIMEZONE).replace(tzinfo=None)
+
+
+def stamps_since(program: LoyaltyProgram) -> datetime | None:
+    """
+    Desde cuando sellan las visitas: el inicio (hora de Madrid) del dia en que se
+    activo la tarjeta por primera vez. None = sin limite (programas anteriores a
+    `enabled_at`).
+    """
+    if program.enabled_at is None:
+        return None
+    activated = program.enabled_at.replace(tzinfo=timezone.utc).astimezone(BUSINESS_TIMEZONE)
+    return datetime.combine(activated.date(), time.min)
+
+
+def find_card_by_scan_token(session: Session, token: str) -> LoyaltyCard | None:
+    if not token:
+        return None
+    return session.exec(select(LoyaltyCard).where(LoyaltyCard.scan_token == token)).first()
 
 
 def find_card(session: Session, business_id: str, email: str | None) -> LoyaltyCard | None:
@@ -96,10 +123,29 @@ def touch(card: LoyaltyCard) -> None:
     card.updated_at = next_second if previous is None or next_second > previous else previous + timedelta(seconds=1)
 
 
+def _manual_stamp_on(session: Session, card_id: int, day: date) -> LoyaltyStamp | None:
+    return session.exec(select(LoyaltyStamp).where(
+        LoyaltyStamp.card_id == card_id,
+        LoyaltyStamp.manual_day == day,
+        LoyaltyStamp.reservation_id.is_(None),  # type: ignore[union-attr]
+    )).first()
+
+
 def award_stamp(session: Session, card: LoyaltyCard, reservation: Reservation) -> bool:
-    """Sella la reserva si no lo estaba. Idempotente: True solo si anade un sello."""
+    """
+    Sella la reserva si no lo estaba. Idempotente: True solo si anade un sello.
+    Si ese dia ya se sello a mano (QR), es la misma visita: el sello manual pasa a
+    ser el de la reserva en vez de sumar otro.
+    """
     exists = session.exec(select(LoyaltyStamp.id).where(LoyaltyStamp.reservation_id == reservation.id)).first()
     if exists:
+        return False
+    manual = _manual_stamp_on(session, card.id, reservation.reservation_start_date.date())  # type: ignore[arg-type]
+    if manual:
+        manual.reservation_id = reservation.id
+        manual.service = reservation.service
+        session.add(manual)
+        session.flush()
         return False
     session.add(LoyaltyStamp(
         card_id=card.id,
@@ -124,8 +170,46 @@ def remove_stamp(session: Session, reservation_id: int) -> LoyaltyCard | None:
         logger.info("reserva %s revertida con su sello ya canjeado: se mantiene", reservation_id)
         return None
     card = session.get(LoyaltyCard, stamp.card_id)
-    session.delete(stamp)
+    if stamp.manual_day is not None:
+        # Se sello a mano en el local antes de completar la reserva: la visita existio.
+        stamp.reservation_id = None
+        stamp.service = MANUAL_STAMP_SERVICE
+        session.add(stamp)
+    else:
+        session.delete(stamp)
     return card
+
+
+def stamped_on(session: Session, card_id: int, day: date) -> bool:
+    """Si la tarjeta tiene ya un sello (de reserva o manual) de ese dia."""
+    start = datetime.combine(day, time.min)
+    return session.exec(select(LoyaltyStamp.id).where(
+        LoyaltyStamp.card_id == card_id,
+        LoyaltyStamp.visit_date >= start,
+        LoyaltyStamp.visit_date < start + timedelta(days=1),
+    )).first() is not None
+
+
+def add_manual_stamp(session: Session, card: LoyaltyCard) -> bool:
+    """
+    Sello de un walk-in escaneado en el local. Idempotente por dia (de Madrid): si
+    la tarjeta ya tiene un sello de hoy, de reserva o manual, no suma. True si sella.
+    """
+    now = madrid_now()
+    if stamped_on(session, card.id, now.date()):  # type: ignore[arg-type]
+        return False
+    session.add(LoyaltyStamp(
+        card_id=card.id, reservation_id=None, manual_day=now.date(), visit_date=now, service=MANUAL_STAMP_SERVICE,
+    ))
+    touch(card)
+    session.add(card)
+    try:
+        session.commit()
+    except IntegrityError:  # dos escaneos a la vez
+        session.rollback()
+        return False
+    notify_devices(session, [card])
+    return True
 
 
 def redeem(session: Session, card: LoyaltyCard, stamps_required: int) -> bool:
@@ -175,7 +259,9 @@ def sync_reservation(session: Session, reservation: Reservation) -> None:
         if program and program.enabled:
             email = _reservation_email(session, reservation)
             card = find_card(session, reservation.business_id, email)
-            if reservation.status == "COMPLETED" and email:
+            since = stamps_since(program)
+            counts = since is None or reservation.reservation_start_date >= since
+            if reservation.status == "COMPLETED" and email and counts:
                 card = card or get_or_create_card(session, reservation.business_id, email, reservation.customer_name)
                 award_stamp(session, card, reservation)
             if card and card not in cards:
@@ -265,6 +351,7 @@ def pass_data(session: Session, card: LoyaltyCard, program: LoyaltyProgram | Non
     return apple_wallet.PassData(
         serial_number=card.serial_number,
         auth_token=card.auth_token,
+        scan_token=card.scan_token,
         business_name=business.business_name if business else "Businext",
         customer_name=card.customer_name,
         stamps=current_stamps(session, card.id),  # type: ignore[arg-type]
@@ -286,5 +373,49 @@ def pass_data(session: Session, card: LoyaltyCard, program: LoyaltyProgram | Non
 
 
 def render_pass(session: Session, card: LoyaltyCard, config: apple_wallet.WalletConfig) -> bytes:
-    data = pass_data(session, card, get_program(session, card.business_id))
-    return apple_wallet.package_pass(apple_wallet.build_pass_json(data, config), config)
+    program = get_program(session, card.business_id)
+    data = pass_data(session, card, program)
+    images = loyalty_logo.pass_images(program.logo_url if program else None)
+    return apple_wallet.package_pass(apple_wallet.build_pass_json(data, config), config, images)
+
+
+# ---------------------------------------------------------------------------
+# Entrega del enlace (solo por email: prueba de que el email es del cliente)
+# ---------------------------------------------------------------------------
+
+def wallet_link_for_booking(session: Session, business_id: str, email: str | None, name: str) -> str | None:
+    """
+    Enlace al pase para el email de una reserva: crea la tarjeta si falta. None si
+    el negocio no tiene la tarjeta activa, Wallet no esta configurado o no hay
+    email. Nunca falla. No devolverlo nunca en una respuesta HTTP publica.
+    """
+    try:
+        program = get_program(session, business_id)
+        if not program or not program.enabled or not normalize_email(email) or not apple_wallet.wallet_available():
+            return None
+        card = get_or_create_card(session, business_id, email, name)  # type: ignore[arg-type]
+        return pass_url(card)
+    except Exception:
+        session.rollback()
+        logger.exception("loyalty: no se pudo preparar el enlace del pase")
+        return None
+
+
+def send_pass_email(session: Session, card: LoyaltyCard, link: str) -> bool:
+    """Envia el enlace del pase al email de la tarjeta. True si Resend lo acepta."""
+    program = get_program(session, card.business_id)
+    business = session.exec(
+        select(BusinessConfiguration).where(BusinessConfiguration.business_id == card.business_id)
+    ).first()
+    stamps = current_stamps(session, card.id)  # type: ignore[arg-type]
+    subject, html = email_loyalty_pass(
+        escape(card.customer_name),
+        escape(business.business_name if business else "Businext"),
+        stamps,
+        program.stamps_required if program else 10,
+        escape(program.reward if program else ""),
+        link,
+        business_phone=business.business_phone if business else None,
+        business_email=business.business_email if business else None,
+    )
+    return send_email(card.customer_email, subject, html) is not None

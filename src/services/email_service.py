@@ -99,6 +99,38 @@ def _button(text: str, url: str, color: str = "#2563eb") -> str:
     """
 
 
+# Texto oficial de la insignia de Apple en espanol (Espana): «Añadir a Apple Wallet».
+# Boton negro con el texto en blanco, como la insignia; la imagen oficial no se
+# incrusta porque muchos clientes de correo bloquean las imagenes.
+APPLE_WALLET_BADGE_TEXT = "Añadir a Apple Wallet"
+
+
+def _wallet_button(url: str) -> str:
+    return f"""
+    <div style="text-align:center; margin:24px 0 8px;">
+      <a href="{escape(url, quote=True)}" style="display:inline-block; background:#000000; color:#ffffff; padding:12px 24px; border-radius:10px; text-decoration:none; font-size:15px; font-weight:600; letter-spacing:-0.2px;">{APPLE_WALLET_BADGE_TEXT}</a>
+    </div>
+    <p style="margin:0 0 8px; font-size:12px; color:#9ca3af; text-align:center;">
+      Ábrelo desde tu iPhone para guardar la tarjeta en Wallet.
+    </p>
+    """
+
+
+def _wallet_block(url: str | None) -> str:
+    """Tarjeta de fidelidad en los emails de reserva (docs/adr/0003); vacio sin enlace."""
+    if not url:
+        return ""
+    return f"""
+    <div style="border-top:1px solid #e5e7eb; margin-top:24px; padding-top:20px;">
+      <p style="margin:0; font-size:14px; color:#111827; font-weight:600; text-align:center;">Tu tarjeta de fidelidad</p>
+      <p style="margin:6px 0 0; font-size:13px; color:#4b5563; line-height:1.5; text-align:center;">
+        Cada visita suma un sello. Llévala en tu iPhone y enséñala al llegar.
+      </p>
+      {_wallet_button(url)}
+    </div>
+    """
+
+
 # ─── Email Templates ─────────────────────────────────────────────────────────
 
 
@@ -112,6 +144,7 @@ def email_request_received_client(
     business_email: str | None = None,
     location_name: str | None = None,
     location_address: str | None = None,
+    wallet_pass_url: str | None = None,
 ) -> tuple[str, str]:
     """Confirmation email to client after submitting a request."""
     subject = f"Solicitud recibida — {business_name}"
@@ -135,6 +168,7 @@ def email_request_received_client(
     <p style="margin:16px 0 0; font-size:13px; color:#9ca3af; text-align:center;">
       Recibirás otro email cuando tu solicitud sea aceptada o rechazada.
     </p>
+    {_wallet_block(wallet_pass_url)}
     """
     return subject, _wrap(body, business_name, business_phone, business_email)
 
@@ -179,6 +213,7 @@ def email_request_accepted(
     business_email: str | None = None,
     location_name: str | None = None,
     location_address: str | None = None,
+    wallet_pass_url: str | None = None,
 ) -> tuple[str, str]:
     """Email to client when their request is accepted."""
     subject = f"¡Reserva confirmada! — {business_name}"
@@ -207,6 +242,7 @@ def email_request_accepted(
     <p style="margin:16px 0 0; font-size:15px; color:#111827; text-align:center; font-weight:600;">
       ¡Te esperamos!
     </p>
+    {_wallet_block(wallet_pass_url)}
     """
     return subject, _wrap(body, business_name, business_phone, business_email)
 
@@ -310,5 +346,31 @@ def email_customer_message(
 
     body = f"""
     <p style="margin:0; font-size:14px; color:#374151; line-height:1.6;">{paragraphs}</p>
+    """
+    return subject, _wrap(body, business_name, business_phone, business_email)
+
+
+def email_loyalty_pass(
+    client_name: str,
+    business_name: str,
+    stamps: int,
+    stamps_required: int,
+    reward: str,
+    pass_url: str,
+    business_phone: str | None = None,
+    business_email: str | None = None,
+) -> tuple[str, str]:
+    """El enlace de la tarjeta de fidelidad, enviado (o reenviado) desde el negocio. Textos ya escapados."""
+    subject = f"Tu tarjeta de fidelidad — {business_name}"
+    body = f"""
+    <h2 style="margin:0 0 8px; font-size:20px; color:#111827; text-align:center;">Tu tarjeta de fidelidad</h2>
+    <p style="margin:0 0 16px; font-size:14px; color:#4b5563; line-height:1.5; text-align:center;">
+      Hola {client_name}, aquí tienes tu tarjeta de {business_name}.
+    </p>
+    {_details_table(("Sellos", f"{stamps} de {stamps_required}"), ("Premio", reward))}
+    {_wallet_button(pass_url)}
+    <p style="margin:16px 0 0; font-size:13px; color:#4b5563; line-height:1.5; text-align:center;">
+      Cada visita suma un sello. Enséñala al llegar para que te la sellen.
+    </p>
     """
     return subject, _wrap(body, business_name, business_phone, business_email)

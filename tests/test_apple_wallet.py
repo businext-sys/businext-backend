@@ -110,6 +110,15 @@ def test_pass_json_identidad_y_web_service(session, card):
     assert data["foregroundColor"] == "rgb(244, 241, 236)"
 
 
+def test_pass_json_qr_con_token_opaco(session, card):
+    data = pass_json(session, card)
+    assert data["barcodes"] == [{
+        "format": "PKBarcodeFormatQR", "message": card.scan_token, "messageEncoding": "iso-8859-1",
+    }]
+    assert "ana@example.com" not in json.dumps(data["barcodes"])
+    assert card.auth_token not in json.dumps(data["barcodes"])
+
+
 def test_pass_json_frontal_sellos_y_proxima_cita(session, card):
     store = pass_json(session, card)["storeCard"]
     assert fields(store["primaryFields"])["stamps"]["value"] == "3/10"

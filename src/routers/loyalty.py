@@ -12,7 +12,7 @@ import logging
 from datetime import datetime, timezone
 from email.utils import format_datetime, parsedate_to_datetime
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Request, Response
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Request, Response, UploadFile
 from pydantic import BaseModel
 from sqlmodel import Session, col, select
 
@@ -23,13 +23,15 @@ from src.database.models.loyalty_model import (
     LoyaltyCard,
     LoyaltyCardCreate,
     LoyaltyCardPublic,
+    LoyaltyPassSent,
     LoyaltyProgram,
     LoyaltyProgramPublic,
     LoyaltyProgramSettings,
+    LoyaltyScanResult,
     LoyaltyVisit,
     WalletRegistration,
 )
-from src.services import apple_wallet, loyalty_service
+from src.services import apple_wallet, loyalty_logo, loyalty_service
 from src.services.customer_service import known_contact
 
 logger = logging.getLogger(__name__)
@@ -54,7 +56,11 @@ def _config_or_503() -> apple_wallet.WalletConfig:
 
 def _program_public(program: LoyaltyProgram | None) -> LoyaltyProgramPublic:
     settings = LoyaltyProgramSettings.model_validate(program, from_attributes=True) if program else LoyaltyProgramSettings()
-    return LoyaltyProgramPublic(**settings.model_dump(), apple_wallet_available=apple_wallet.wallet_available())
+    return LoyaltyProgramPublic(
+        **settings.model_dump(),
+        apple_wallet_available=apple_wallet.wallet_available(),
+        logo_url=program.logo_url if program else None,
+    )
 
 
 def _card_public(session: Session, card: LoyaltyCard, program: LoyaltyProgram | None) -> LoyaltyCardPublic:
@@ -92,6 +98,8 @@ def update_program(body: LoyaltyProgramSettings, session: SessionDep, auth: Auth
     program = loyalty_service.get_program(session, auth.business_id) or LoyaltyProgram(business_id=auth.business_id)
     program.sqlmodel_update(body.model_dump())
     program.updated_at = datetime.utcnow()
+    if program.enabled and program.enabled_at is None:
+        program.enabled_at = program.updated_at  # las visitas de antes no sellan
     session.add(program)
     session.commit()
     session.refresh(program)
@@ -134,17 +142,133 @@ def create_card(body: LoyaltyCardCreate, session: SessionDep, auth: AuthContext 
     return _card_public(session, card, program)
 
 
+def _own_card(session: Session, business_id: str, serial_number: str) -> LoyaltyCard:
+    card = session.exec(select(LoyaltyCard).where(LoyaltyCard.serial_number == serial_number)).first()
+    if not card or card.business_id != business_id:
+        raise HTTPException(status_code=404, detail="Tarjeta no encontrada")
+    return card
+
+
 @router.post("/cards/{serial_number}/redeem", response_model=LoyaltyCardPublic)
 def redeem_card(serial_number: str, session: SessionDep, auth: AuthContext = Depends(require_subscription)):
     """Entrega el premio: gasta los sellos más antiguos que pide la regla."""
-    card = session.exec(select(LoyaltyCard).where(LoyaltyCard.serial_number == serial_number)).first()
-    if not card or card.business_id != auth.business_id:
-        raise HTTPException(status_code=404, detail="Tarjeta no encontrada")
+    card = _own_card(session, auth.business_id, serial_number)
     program = loyalty_service.get_program(session, auth.business_id)
     required = program.stamps_required if program else LoyaltyProgramSettings().stamps_required
     if not loyalty_service.redeem(session, card, required):
         raise HTTPException(status_code=409, detail="Aún no tiene sellos suficientes para el premio")
     return _card_public(session, card, program)
+
+
+@router.post("/cards/{serial_number}/send-pass", response_model=LoyaltyPassSent)
+def send_pass(serial_number: str, session: SessionDep, auth: AuthContext = Depends(require_subscription)):
+    """
+    (Re)envía al email del cliente el enlace «Añadir a Apple Wallet». El enlace solo
+    sale por email: así se demuestra que el email es suyo. Devuelve también el
+    enlace para enseñarlo en el local (el barbero ya ve la tarjeta).
+    """
+    card = _own_card(session, auth.business_id, serial_number)
+    _config_or_503()
+    link = loyalty_service.pass_url(card)
+    if not link or not loyalty_service.send_pass_email(session, card, link):
+        raise HTTPException(status_code=502, detail="No se pudo enviar el email. Inténtalo de nuevo más tarde")
+    return LoyaltyPassSent(sent_to=card.customer_email, pass_url=link)
+
+
+# ---------------------------------------------------------------------------
+# Escaneo del QR del pase en el local
+# ---------------------------------------------------------------------------
+
+def _scanned_card(session: Session, business_id: str, token: str) -> LoyaltyCard:
+    """404 tanto si el token no existe como si es de otro negocio: no se distingue."""
+    card = loyalty_service.find_card_by_scan_token(session, token)
+    if not card or card.business_id != business_id:
+        raise HTTPException(status_code=404, detail="Tarjeta no encontrada")
+    return card
+
+
+def _scan_result(session: Session, card: LoyaltyCard, program: LoyaltyProgram | None, added: bool) -> LoyaltyScanResult:
+    return LoyaltyScanResult(
+        **_card_public(session, card, program).model_dump(),
+        stamped_today=loyalty_service.stamped_on(session, card.id, loyalty_service.madrid_now().date()),  # type: ignore[arg-type]
+        stamp_added=added,
+    )
+
+
+@router.get("/scan/{token}", response_model=LoyaltyScanResult)
+def scan_card(token: str, session: SessionDep, auth: AuthContext = Depends(require_subscription)):
+    """Tarjeta del QR del pase: cliente, sellos, si tiene el premio, últimas visitas y si ya se selló hoy."""
+    card = _scanned_card(session, auth.business_id, token)
+    return _scan_result(session, card, loyalty_service.get_program(session, auth.business_id), added=False)
+
+
+@router.post("/scan/{token}/stamp", response_model=LoyaltyScanResult)
+def stamp_scanned_card(token: str, session: SessionDep, auth: AuthContext = Depends(require_subscription)):
+    """
+    Sello manual para un walk-in (visita sin reserva). Idempotente por día: si la
+    tarjeta ya tiene un sello de hoy (manual o de reserva), no suma y
+    `stamp_added` es false.
+    """
+    card = _scanned_card(session, auth.business_id, token)
+    program = loyalty_service.get_program(session, auth.business_id)
+    if not program or not program.enabled:
+        raise HTTPException(status_code=409, detail="La tarjeta de fidelidad no está activa")
+    added = loyalty_service.add_manual_stamp(session, card)
+    session.refresh(card)
+    return _scan_result(session, card, program, added=added)
+
+
+# ---------------------------------------------------------------------------
+# Logo del pase (opcional; sin el, el de Businext)
+# ---------------------------------------------------------------------------
+
+@router.put("/program/logo", response_model=LoyaltyProgramPublic)
+def upload_program_logo(
+    session: SessionDep,
+    file: UploadFile = File(...),
+    auth: AuthContext = Depends(require_owner),
+):
+    """Sube el logo del negocio para el pase (PNG, JPG o WebP, hasta 2 MB). Se adapta a los tamaños de Apple."""
+    raw = file.file.read(loyalty_logo.MAX_UPLOAD_BYTES + 1)
+    try:
+        images = loyalty_logo.resize_logo(raw)
+    except loyalty_logo.InvalidLogo as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+    try:
+        logo_url = loyalty_logo.upload_logo(auth.business_id, images)
+    except loyalty_logo.StorageNotConfigured as exc:
+        logger.error("Logo del pase: %s", exc)
+        raise HTTPException(status_code=503, detail="El almacenamiento de logos no está configurado en el servidor")
+    except loyalty_logo.StorageError as exc:
+        logger.error("Logo del pase: %s", exc)
+        raise HTTPException(status_code=502, detail="No se pudo guardar el logo. Inténtalo de nuevo")
+
+    program = loyalty_service.get_program(session, auth.business_id) or LoyaltyProgram(business_id=auth.business_id)
+    previous = program.logo_url
+    program.logo_url = logo_url
+    program.updated_at = datetime.utcnow()
+    session.add(program)
+    session.commit()
+    session.refresh(program)
+    loyalty_logo.delete_logo(previous)
+    loyalty_service.touch_all_cards(session, auth.business_id)
+    return _program_public(program)
+
+
+@router.delete("/program/logo", response_model=LoyaltyProgramPublic)
+def delete_program_logo(session: SessionDep, auth: AuthContext = Depends(require_owner)):
+    """Quita el logo propio: los pases vuelven a llevar el de Businext."""
+    program = loyalty_service.get_program(session, auth.business_id)
+    if program and program.logo_url:
+        previous = program.logo_url
+        program.logo_url = None
+        program.updated_at = datetime.utcnow()
+        session.add(program)
+        session.commit()
+        session.refresh(program)
+        loyalty_logo.delete_logo(previous)
+        loyalty_service.touch_all_cards(session, auth.business_id)
+    return _program_public(program)
 
 
 # ---------------------------------------------------------------------------

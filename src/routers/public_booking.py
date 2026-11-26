@@ -242,10 +242,16 @@ def create_booking_request(
             location_name = loc.name
             location_address = loc.address
 
+    # El enlace al pase de fidelidad va solo en el email (prueba de que el email es
+    # del cliente), nunca en la respuesta: cualquiera puede pedir con un email ajeno.
+    wallet_pass_url = loyalty_service.wallet_link_for_booking(
+        session, business_id, booking.client_email, booking.client_name,
+    )
     subject, html = email_request_received_client(
         booking.client_name, booking.service, date_str, biz.business_name, booking.employee_name,
         business_phone=biz.business_phone, business_email=biz.business_email,
         location_name=location_name, location_address=location_address,
+        wallet_pass_url=wallet_pass_url,
     )
     send_email(booking.client_email, subject, html)
 
@@ -265,24 +271,7 @@ def create_booking_request(
         "id": booking.id,
         "status": booking.status,
         "message": "Solicitud enviada correctamente. Recibirás un email de confirmación.",
-        "wallet_pass_url": _wallet_pass_url(session, booking),
     }
-
-
-def _wallet_pass_url(session: SessionDep, booking: BookingRequest) -> str | None:
-    """
-    Enlace al pase de Apple Wallet de la tarjeta de fidelidad del cliente (docs/adr/0003),
-    o None si el negocio no la tiene activa o Wallet no esta configurado. Nunca falla.
-    """
-    try:
-        program = loyalty_service.get_program(session, booking.business_id)
-        if not program or not program.enabled or not loyalty_service.normalize_email(booking.client_email):
-            return None
-        card = loyalty_service.get_or_create_card(session, booking.business_id, booking.client_email, booking.client_name)
-        return loyalty_service.pass_url(card)
-    except Exception:
-        session.rollback()
-        return None
 
 
 def _start_booking_request_conversation(session: SessionDep, owner_id: str, booking: BookingRequest) -> str | None:

@@ -7,7 +7,7 @@ que se regenera cuando cambia `updated_at`.
 
 import re
 import secrets
-from datetime import datetime
+from datetime import date, datetime
 from uuid import uuid4
 
 from pydantic import field_validator
@@ -40,6 +40,11 @@ class LoyaltyProgram(LoyaltyProgramSettings, table=True):
 
     id: int | None = Field(default=None, primary_key=True)
     business_id: str = Field(index=True, unique=True, nullable=False)
+    # Primera activacion (UTC). Las visitas anteriores no sellan.
+    enabled_at: datetime | None = None
+    # Logo propio del pase (Supabase Storage): URL publica de `logo@2x.png`; el resto
+    # de tamanos estan en la misma carpeta. Sin el, el pase lleva el de Businext.
+    logo_url: str | None = None
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow)
 
@@ -49,6 +54,8 @@ class LoyaltyCard(SQLModel, table=True):
     Tarjeta de un cliente en un negocio, identificado por su email en minusculas
     (el dato que pide la reserva publica). `serial_number` y `auth_token` son los
     del pase de Wallet; `updated_at` es la marca que compara `passesUpdatedSince`.
+    `scan_token` es lo que lleva el QR del pase: opaco, distinto del `auth_token`
+    (que da acceso al pase) y sin el email.
     """
 
     __table_args__ = (UniqueConstraint("business_id", "customer_email"),)
@@ -59,16 +66,24 @@ class LoyaltyCard(SQLModel, table=True):
     customer_name: str = Field(nullable=False)
     serial_number: str = Field(default_factory=lambda: uuid4().hex, unique=True, index=True)
     auth_token: str = Field(default_factory=lambda: secrets.token_urlsafe(24), nullable=False)
+    scan_token: str = Field(default_factory=lambda: secrets.token_urlsafe(18), unique=True, index=True, nullable=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
     updated_at: datetime = Field(default_factory=datetime.utcnow, index=True)
 
 
 class LoyaltyStamp(SQLModel, table=True):
-    """Un sello por reserva completada: `reservation_id` unico hace idempotente el sellado."""
+    """
+    Un sello por visita. De reserva completada: `reservation_id` unico hace
+    idempotente el sellado. Manual (walk-in escaneado en el local): sin reserva y
+    con `manual_day` (dia de Madrid), unico por tarjeta: uno al dia como mucho.
+    """
+
+    __table_args__ = (UniqueConstraint("card_id", "manual_day"),)
 
     id: int | None = Field(default=None, primary_key=True)
     card_id: int = Field(foreign_key="loyaltycard.id", index=True, nullable=False)
-    reservation_id: int = Field(unique=True, nullable=False)
+    reservation_id: int | None = Field(default=None, unique=True)
+    manual_day: date | None = None
     visit_date: datetime = Field(nullable=False)
     service: str = Field(nullable=False)
     created_at: datetime = Field(default_factory=datetime.utcnow)
@@ -92,6 +107,7 @@ class WalletRegistration(SQLModel, table=True):
 
 class LoyaltyProgramPublic(LoyaltyProgramSettings):
     apple_wallet_available: bool
+    logo_url: str | None = None
 
 
 class LoyaltyVisit(SQLModel):
@@ -110,6 +126,18 @@ class LoyaltyCardPublic(SQLModel):
     reward_ready: bool
     visits: list[LoyaltyVisit]
     pass_url: str | None
+
+
+class LoyaltyScanResult(LoyaltyCardPublic):
+    """Lo que ve el barbero al escanear el QR del pase."""
+
+    stamped_today: bool
+    stamp_added: bool = False
+
+
+class LoyaltyPassSent(SQLModel):
+    sent_to: str
+    pass_url: str
 
 
 class LoyaltyCardCreate(SQLModel):

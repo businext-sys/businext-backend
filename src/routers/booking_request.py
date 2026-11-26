@@ -19,7 +19,7 @@ from src.services.email_service import (
     email_request_rejected,
 )
 from src.services.availability_service import service_duration
-from src.services.loyalty_service import sync_reservation
+from src.services.loyalty_service import sync_reservation, wallet_link_for_booking
 from src.services.team_notifications import notify_reservation_change
 
 router = APIRouter(prefix="/booking-requests", tags=["booking-requests"])
@@ -107,6 +107,7 @@ def accept_booking_request(
         business_phone=biz.business_phone if biz else None,
         business_email=biz.business_email if biz else None,
         location_name=location_name, location_address=location_address,
+        wallet_pass_url=wallet_link_for_booking(session, auth.business_id, booking.client_email, booking.client_name),
     )
     send_email(booking.client_email, subject, html)
 
