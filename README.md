@@ -433,6 +433,9 @@ responde 204.
   usuario de Supabase Auth. Los empleados pierden el acceso (se borran sus
   filas de `businessmember`, sus push tokens y sus horarios), pero sus
   usuarios de Auth se conservan.
+  Incluye la tarjeta de fidelidad: regla, tarjetas, sellos y dispositivos de
+  Wallet de sus tarjetas; despues borra el logo del pase del bucket
+  `loyalty-logos` (mejor esfuerzo: si Storage falla, la cuenta se borra igual).
 - **Manager/employee**: borra solo su membresia, push tokens, conversaciones
   del asistente, horarios propios, `profile` y su usuario de Auth.
 
