@@ -86,6 +86,17 @@ TRENDS_MCP_VIDIQ_TOKEN=              # API key de vidIQ de la cuenta de Businext
 
 # Recordatorios de citas (src/services/reminder_service.py)
 REMINDERS_JOB_SECRET=                # firma de POST /internal/reminders/run
+
+# Tarjeta de fidelidad en Apple Wallet (src/services/apple_wallet.py). Sin
+# alguna, las rutas de Wallet responden 503 y el resto funciona igual.
+# CERT/KEY/WWDR: el PEM (vale en una linea con \n escapados) o la ruta a un .pem.
+APPLE_WALLET_PASS_TYPE_ID=           # p. ej. pass.com.businext.loyalty
+APPLE_WALLET_TEAM_ID=                # Team ID de la cuenta de Apple Developer
+APPLE_WALLET_CERT=                   # certificado del Pass Type ID (PEM)
+APPLE_WALLET_KEY=                    # su clave privada (PEM)
+APPLE_WALLET_KEY_PASSWORD=           # opcional, si la clave esta cifrada
+APPLE_WALLET_WWDR=                   # intermedio Apple WWDR G4 (PEM)
+PUBLIC_API_URL=https://businext-backend.onrender.com   # https; webServiceURL y enlaces de los pases
 ```
 
 ### CORS
@@ -130,6 +141,8 @@ En la practica:
   y los recordatorios de citas (`docs/sql/183-reminders.sql`). Los avisos al
   equipo y la duracion de los servicios (`docs/sql/220-team-notifications.sql`):
   sin la columna `product.duration_minutes` fallan las rutas que leen productos.
+  La tarjeta de fidelidad y Apple Wallet (`docs/sql/loyalty-wallet.sql`): sin
+  las columnas `location.latitude/longitude` fallan las rutas que leen locales.
 - Activa RLS en cada tabla nueva (`ALTER TABLE ... ENABLE ROW LEVEL SECURITY`,
   sin politicas): el backend no lo necesita, pero sin RLS la API publica de
   Supabase expone la tabla con la anon key.
@@ -164,7 +177,8 @@ src/
 │   ├── database.py         Engine y sesion (SessionDep)
 │   └── models/             Modelos SQLModel (tablas)
 ├── routers/                Endpoints HTTP, uno por dominio
-└── services/               Logica de negocio e integraciones externas
+├── services/               Logica de negocio e integraciones externas
+└── assets/wallet/          Imagenes por defecto de los pases de Wallet
 alembic/                    Config de migraciones (sin versions/)
 docker/entrypoint.sh        Migraciones + uvicorn en el contenedor
 tests/                      pytest
@@ -429,6 +443,8 @@ En [`docs/adr/`](docs/adr/). La primera,
 LLM (Claude Haiku 5.5 desde la story #217; antes OpenAI `gpt-4o-mini`), orquestacion y contrato del chat de la app movil.
 [0002 — agente de voz Retell](docs/adr/0002-agente-de-voz-retell.md):
 numero → negocio, firma y modos de reserva.
+[0003 — tarjeta de fidelidad con Apple Wallet](docs/adr/0003-fidelizacion-apple-wallet.md):
+modelo de sellos, firma de pases y web service de PassKit.
 
 ## Generacion de tipos para el frontend
 
@@ -506,3 +522,34 @@ curl -fsS -X POST -H "Authorization: Bearer $REMINDERS_JOB_SECRET" \
 
 El owner y el manager leen y cambian el ajuste con `GET`/`PUT /configuration/reminders`
 (`{"reminders_enabled": bool}`, activado por defecto).
+
+## Tarjeta de fidelidad y Apple Wallet
+
+Detalle y preguntas abiertas en [ADR 0003](docs/adr/0003-fidelizacion-apple-wallet.md).
+El owner activa la tarjeta con `PUT /loyalty/program` (`enabled`, `stamps_required`,
+`reward`, colores `#RRGGBB`); cada reserva que pasa a `COMPLETED` suma un sello a la
+tarjeta del cliente (por email), una sola vez, y revertirla lo quita. El pase de Wallet se
+regenera y se avisa por APNs a los dispositivos registrados cuando cambian los sellos, la
+proxima cita o la regla.
+
+Para firmar pases hace falta, en la cuenta de Apple Developer:
+
+1. **Identifiers → Pass Type IDs → +**: crear el identificador (p. ej.
+   `pass.com.businext.loyalty`) → `APPLE_WALLET_PASS_TYPE_ID`. El Team ID (arriba a la
+   derecha en Membership) → `APPLE_WALLET_TEAM_ID`.
+2. **Crear el certificado** de ese Pass Type ID con un CSR generado en el Mac (Acceso a
+   Llaveros → Asistente de certificados) o con `openssl req -new -newkey rsa:2048 -nodes
+   -keyout pass.key -out pass.csr`. Descargar `pass.cer`.
+3. Pasarlo a PEM: `openssl x509 -inform der -in pass.cer -out pass.pem`. Si se exporto
+   desde Llaveros como `.p12`: `openssl pkcs12 -in pass.p12 -clcerts -nokeys -out pass.pem`
+   y `openssl pkcs12 -in pass.p12 -nocerts -nodes -out pass.key` (con OpenSSL 3, anadir
+   `-legacy`).
+4. Descargar el intermedio **Apple WWDR G4** de <https://www.apple.com/certificateauthority/>
+   y pasarlo a PEM: `openssl x509 -inform der -in AppleWWDRCAG4.cer -out wwdr.pem`.
+5. `pass.pem`, `pass.key` y `wwdr.pem` van a `APPLE_WALLET_CERT`, `APPLE_WALLET_KEY` y
+   `APPLE_WALLET_WWDR` (contenido o ruta). **Nunca al repo.** El mismo certificado
+   autentica los pushes a APNs; caduca al ano y hay que renovarlo.
+
+Wallet llama al web service en `PUBLIC_API_URL` + `/wallet/apple/v1/...`, que tiene que ser
+HTTPS publico. Para probar en local, un tunel (p. ej. `cloudflared`) y su URL en
+`PUBLIC_API_URL`.

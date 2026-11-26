@@ -27,6 +27,7 @@ from src.services.email_service import (
     send_email,
 )
 from src.services.assistant import history
+from src.services import loyalty_service
 from src.services.push_notification_service import send_push_notifications
 
 router = APIRouter(prefix="/public/book", tags=["public-booking"])
@@ -264,7 +265,24 @@ def create_booking_request(
         "id": booking.id,
         "status": booking.status,
         "message": "Solicitud enviada correctamente. Recibirás un email de confirmación.",
+        "wallet_pass_url": _wallet_pass_url(session, booking),
     }
+
+
+def _wallet_pass_url(session: SessionDep, booking: BookingRequest) -> str | None:
+    """
+    Enlace al pase de Apple Wallet de la tarjeta de fidelidad del cliente (docs/adr/0003),
+    o None si el negocio no la tiene activa o Wallet no esta configurado. Nunca falla.
+    """
+    try:
+        program = loyalty_service.get_program(session, booking.business_id)
+        if not program or not program.enabled or not loyalty_service.normalize_email(booking.client_email):
+            return None
+        card = loyalty_service.get_or_create_card(session, booking.business_id, booking.client_email, booking.client_name)
+        return loyalty_service.pass_url(card)
+    except Exception:
+        session.rollback()
+        return None
 
 
 def _start_booking_request_conversation(session: SessionDep, owner_id: str, booking: BookingRequest) -> str | None:

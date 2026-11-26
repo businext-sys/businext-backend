@@ -42,6 +42,8 @@ def create_location(
         address=body.address,
         phone=body.phone,
         maps_link=body.maps_link,
+        latitude=body.latitude,
+        longitude=body.longitude,
     )
     session.add(location)
     session.commit()

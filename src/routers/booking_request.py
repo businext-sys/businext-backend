@@ -19,6 +19,7 @@ from src.services.email_service import (
     email_request_rejected,
 )
 from src.services.availability_service import service_duration
+from src.services.loyalty_service import sync_reservation
 from src.services.team_notifications import notify_reservation_change
 
 router = APIRouter(prefix="/booking-requests", tags=["booking-requests"])
@@ -81,6 +82,7 @@ def accept_booking_request(
     session.commit()
     session.refresh(reservation)
     notify_reservation_change(session, reservation, "created", auth.user_id)
+    sync_reservation(session, reservation)
 
     # Send email to client
     biz = session.exec(

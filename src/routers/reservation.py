@@ -14,6 +14,7 @@ from ..database.models.member_model import BusinessMember
 from ..database.models.profile_model import Profile
 from src.api.auth import AuthContext, require_subscription, require_owner
 from src.services.availability_service import service_duration
+from src.services.loyalty_service import sync_reservation
 from src.services.team_notifications import notify_reservation_change
 
 router = APIRouter(
@@ -124,6 +125,7 @@ def create_reservation(
     session.commit()
     session.refresh(reservation_obj)
     notify_reservation_change(session, reservation_obj, "created", auth.user_id)
+    sync_reservation(session, reservation_obj)
     return reservation_obj
 
 
@@ -178,6 +180,7 @@ def update_reservation(
     session.refresh(reservation_db)
     if (reservation_db.reservation_start_date, reservation_db.in_charge) != previous:
         notify_reservation_change(session, reservation_db, "moved", auth.user_id)
+    sync_reservation(session, reservation_db)
     return reservation_db
 
 
@@ -201,6 +204,7 @@ def delete_reservation(
     session.delete(reservation)
     session.commit()
     notify_reservation_change(session, cancelled, "cancelled", auth.user_id)
+    sync_reservation(session, cancelled)
     return {"Reservation deleted": True}
 
 
@@ -232,4 +236,5 @@ def revert_reservation(
     session.add(reservation)
     session.commit()
     session.refresh(reservation)
+    sync_reservation(session, reservation)
     return reservation
